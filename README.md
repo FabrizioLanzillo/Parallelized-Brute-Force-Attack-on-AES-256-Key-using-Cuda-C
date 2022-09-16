@@ -1,4 +1,4 @@
-# ParallelizedBruteForceAttackonAESwithCuda
+# Parallelized-AES-Brute-Force-Attack-with-Cuda
 
 Project for Computer Architecture course at University of Pisa (MSc Computer Engineering)
 
