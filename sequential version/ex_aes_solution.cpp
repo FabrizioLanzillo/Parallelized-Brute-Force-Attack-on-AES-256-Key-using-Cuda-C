@@ -12,6 +12,22 @@
 #include <thread>
 #include <string.h>
 
+//Parameters definition
+#define AES_KEYLENGTH 256
+#define DEBUG true
+
+//              PARAMETERS
+//  Key generated from openssl enc -aes-256-cbc -k secret -P -md sha1
+//  salt = B51DE47CC865460E
+//  key = 85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC
+//  iv = D8596B739EFAC0460E861F9B7790F996
+
+//Key in HEX format as global parameters
+static const char salt[] = "B51DE47CC865460E";
+static const char key[] = "85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC";
+unsigned char* iv = (unsigned char*)"D8596B739EFAC0460E861F9B7790F996";
+
+
 
 //Utility function that handle encryption errors
 void handleErrors(void)
@@ -23,50 +39,58 @@ void handleErrors(void)
 /** Function that perform an encryption on AES-256
  * plaintext: Contain the data to be encrypted
  * plaintext_len: Contain the length of the data to be encrypted
- * key: contain the symmetric key to be used for encryption
  * iv: random nonce
  * ciphertext: filled at the end of the encryption, contain the whole encrypted message
  */
-int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
-  unsigned char *iv, unsigned char *ciphertext)
+int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char* aes_key, unsigned char *iv, unsigned char *ciphertext)
 {
   //Structure filled with encryption informations
   EVP_CIPHER_CTX *ctx;
   //Utility variables
   int len;
   int ciphertext_len;
+  int ret;
 
   //Create and initialise the context
   ctx = EVP_CIPHER_CTX_new();
   //Encrypt init
-  EVP_EncryptInit(ctx, EVP_aes_256_ecb(), key, iv);
+  ret = EVP_EncryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
+  if (DEBUG && ret != -1)
+    printf("Context set up SUCCESSFULLY\n");
+  else  
+    printf("Context set up ERROR with code: %d", ret);
 
-  //Calculate the number of blocks to be encrypted
-  uintmax_t n_blocks = (plaintext_len / 32) + 1;
   unsigned char* ct_temp;
 
-  //Calculate the encrypted block on each cycle for each block 
-  for (uintmax_t i = 0; i < n_blocks; i++){
-    if (EVP_EncryptUpdate(ctx, ct_temp, &len, plaintext, plaintext_len) == 0)
-	    handleErrors();
-    ciphertext_len = len;
-
+  // Calculate the encryption 
+  if (1 != EVP_EncryptUpdate(ctx, ct_temp, &len, plaintext, plaintext_len)){
+	  handleErrors();
+    return -1;
   }
 
+  if(DEBUG){
+    printf("The cybertext has length: %d\n", len);
+  }
 
-  //Encrypt Final. Finalize the encryption and adds the padding
-  if (1 != EVP_EncryptFinal(ctx, ciphertext + len, &len))
-	handleErrors();
+  // Finalize the encrption, some bytes may be added at this stage
+  if(1 != EVP_EncryptFinal_ex(ctx, ct_temp + len, &len)){
+    handleErrors();
+    return -1;
+  }
   ciphertext_len += len;
-
-  // MUST ALWAYS BE CALLED!!!!!!!!!!
+  //Free the context
   EVP_CIPHER_CTX_free(ctx);
-
+  
   return ciphertext_len;
 }
 
-int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
-  unsigned char *iv, unsigned char *plaintext)
+/** Function that perform a decryption on AES-256
+ * plaintext: Contain the data to be encrypted
+ * ciphertext_len: Contain the length of the encrypted data
+ * iv: random nonce
+ * ciphertext: filled with the encryption, contain the whole encrypted message
+ */
+int decrypt(unsigned char *ciphertext, int ciphertext_len, char* aes_key, unsigned char *iv, unsigned char *plaintext)
 {
   EVP_CIPHER_CTX *ctx;
 
@@ -78,7 +102,7 @@ int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
   ctx = EVP_CIPHER_CTX_new();
 
   // Decrypt Init
-  EVP_DecryptInit(ctx, EVP_aes_128_ecb(), key, iv);
+  EVP_DecryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
 
   // Decrypt Update: one call is enough because our mesage is very short.
   if(1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
@@ -98,37 +122,25 @@ int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
 
 
 int main (void){
-  //256 bit key (32 characters * 8 bit)
-  unsigned char *key = (unsigned char *)"12345363265462567588718362176679 ";
+    // TODO - Fix the string with the one obtained from a File, it may be more efficient to load it chunk by chunk inside the encrypt if the file is pretty big
 
-  //Our Plaintext
-  unsigned char plaintext[] = "This is a Very Short message";
+    // First of all get the Plaintext
+    unsigned char* plaintext = (unsigned char*)"Hi I'm Federico and this is a string!";
+    unsigned char* ciphertext;
+    unsigned char aes_key[AES_KEYLENGTH];
+    long int pt_len = strlen((char*)plaintext);
 
-  /* Buffer for ciphertext. Ensure the buffer is long enough for the
-   * ciphertext which may be longer than the plaintext, depending on the
-   * algorithm and mode*/
-  unsigned char* ciphertext = (unsigned char *) malloc(sizeof(plaintext)+16);
+    if(DEBUG)
+      printf("The Plaintext has length: %ld\n", pt_len);
 
-  int decryptedtext_len, ciphertext_len;
-  // Encrypt utility function
-  ciphertext_len = encrypt (plaintext, strlen ((char *)plaintext), key, NULL, ciphertext);
+    //Clean the memory
+    memset(aes_key,0,AES_KEYLENGTH/8);
 
-  // Redirect our ciphertext to the terminal
-  printf("Ciphertext is:\n");
-  BIO_dump_fp (stdout, (const char *)ciphertext, ciphertext_len);
+    //Copy the key as a bitstream
+    strcpy((char*) aes_key, key);
+    if(DEBUG)
+      printf("The key is: %s\n", aes_key);
 
-  // Buffer for the decrypted text 
-  unsigned char* decryptedtext = (unsigned char *) malloc(ciphertext_len);
-
-  // Decrypt the ciphertext
-  decryptedtext_len = decrypt(ciphertext, ciphertext_len, key, NULL, decryptedtext);
-
-  // Add a NULL terminator. We are expecting printable text
-  decryptedtext[decryptedtext_len] = '\0';
-
-  // Show the decrypted text 
-  printf("Decrypted text is:\n");
-  printf("%s\n", decryptedtext);
-  
-  return 0;
+    //Call the encryption function and obtain the Cyphertext
+    encrypt(plaintext,pt_len,aes_key,iv,ciphertext);
 }
