@@ -13,30 +13,46 @@
 #include <string.h>
 
 
+//Utility function that handle encryption errors
 void handleErrors(void)
 {
   ERR_print_errors_fp(stderr);
   abort();
 }
 
+/** Function that perform an encryption on AES-256
+ * plaintext: Contain the data to be encrypted
+ * plaintext_len: Contain the length of the data to be encrypted
+ * key: contain the symmetric key to be used for encryption
+ * iv: random nonce
+ * ciphertext: filled at the end of the encryption, contain the whole encrypted message
+ */
 int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
   unsigned char *iv, unsigned char *ciphertext)
 {
+  //Structure filled with encryption informations
   EVP_CIPHER_CTX *ctx;
-
+  //Utility variables
   int len;
   int ciphertext_len;
 
-  /* Create and initialise the context */
+  //Create and initialise the context
   ctx = EVP_CIPHER_CTX_new();
+  //Encrypt init
+  EVP_EncryptInit(ctx, EVP_aes_256_ecb(), key, iv);
 
-  // Encrypt init
-  EVP_EncryptInit(ctx, EVP_aes_128_ecb(), key, iv);
+  //Calculate the number of blocks to be encrypted
+  uintmax_t n_blocks = (plaintext_len / 32) + 1;
+  unsigned char* ct_temp;
 
-  // Encrypt Update: one call is enough because our mesage is very short.
-  if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len))
-	handleErrors();
-  ciphertext_len = len;
+  //Calculate the encrypted block on each cycle for each block 
+  for (uintmax_t i = 0; i < n_blocks; i++){
+    if (EVP_EncryptUpdate(ctx, ct_temp, &len, plaintext, plaintext_len) == 0)
+	    handleErrors();
+    ciphertext_len = len;
+
+  }
+
 
   //Encrypt Final. Finalize the encryption and adds the padding
   if (1 != EVP_EncryptFinal(ctx, ciphertext + len, &len))
@@ -82,8 +98,8 @@ int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
 
 
 int main (void){
-   //128 bit key (16 characters * 8 bit)
-  unsigned char *key = (unsigned char *)"0123456789012345";
+  //256 bit key (32 characters * 8 bit)
+  unsigned char *key = (unsigned char *)"12345363265462567588718362176679 ";
 
   //Our Plaintext
   unsigned char plaintext[] = "This is a Very Short message";

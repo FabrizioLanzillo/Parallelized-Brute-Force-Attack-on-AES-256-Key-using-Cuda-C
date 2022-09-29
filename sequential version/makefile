@@ -1,7 +1,14 @@
-all: run
+CC = g++
+LFLAGS = -Wall -pthread -lssl -lcrypto -std=c++14 -Wno-unknown-pragmas #does not work without lssl 
+CFLAGS = -c -Wall 
 
-run: ex_aes_solution.cpp
-	g++ ex_aes_solution.cpp -o run -std=c++14 -lssl -lcrypto
+all: run.exe
+
+run.exe: ex_aes_solution.o
+	$(CC) ex_aes_solution.o $(LFLAGS) -o run.exe 
+
+ex_aes_solution.o: 
+	$(CC) $(CFLAGS) ex_aes_solution.cpp -o ex_aes_solution.o
 
 clean:
-	rm run
+	rm *.o run.exe
