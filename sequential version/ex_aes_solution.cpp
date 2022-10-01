@@ -60,20 +60,21 @@ int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char* aes_key,
   else  
     printf("Context set up ERROR with code: %d", ret);
 
-  unsigned char* ct_temp;
-
   // Calculate the encryption 
-  if (1 != EVP_EncryptUpdate(ctx, ct_temp, &len, plaintext, plaintext_len)){
-	  handleErrors();
-    return -1;
-  }
+  int n_blocks = plaintext_len / 16;
+  //for(int i = 0; i < n_blocks; i++){
+    if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)){
+      handleErrors();
+      return -1;
+    }
+  //}
 
   if(DEBUG){
-    printf("The cybertext has length: %d\n", len);
+    printf("The cyphertext has length: %d\n", len);
   }
 
   // Finalize the encrption, some bytes may be added at this stage
-  if(1 != EVP_EncryptFinal_ex(ctx, ct_temp + len, &len)){
+  if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)){
     handleErrors();
     return -1;
   }
@@ -88,6 +89,7 @@ int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char* aes_key,
  * plaintext: Contain the data to be encrypted
  * ciphertext_len: Contain the length of the encrypted data
  * iv: random nonce
+ * aes_key: key for symmetric decryption
  * ciphertext: filled with the encryption, contain the whole encrypted message
  */
 int decrypt(unsigned char *ciphertext, int ciphertext_len, char* aes_key, unsigned char *iv, unsigned char *plaintext)
@@ -95,20 +97,26 @@ int decrypt(unsigned char *ciphertext, int ciphertext_len, char* aes_key, unsign
   EVP_CIPHER_CTX *ctx;
 
   int len;
-
+  int ret;
   int plaintext_len;
 
   /* Create and initialise the context */
   ctx = EVP_CIPHER_CTX_new();
+  if(!ctx)
+    handleErrors();
 
   // Decrypt Init
-  EVP_DecryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
+  ret = EVP_DecryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
+  if (DEBUG && ret != -1)
+    printf("Context set up SUCCESSFULLY\n");
+  else if(DEBUG && ret < 0)
+    printf("Context set up ERROR with code: %d", ret);
 
   // Decrypt Update: one call is enough because our mesage is very short.
   if(1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
     handleErrors();
   plaintext_len = len;
-
+  printf("CIAO\n");
   // Decryption Finalize
   if(1 != EVP_DecryptFinal(ctx, plaintext + len, &len)) handleErrors();
   plaintext_len += len;
@@ -126,9 +134,16 @@ int main (void){
 
     // First of all get the Plaintext
     unsigned char* plaintext = (unsigned char*)"Hi I'm Federico and this is a string!";
-    unsigned char* ciphertext;
+    
+    unsigned char* ciphertext = (unsigned char*)malloc(sizeof(char)*1024);
+    unsigned char* decrypted_plaintext = (unsigned char*)malloc(sizeof(char)*1024);
+
+    memset(ciphertext,0,1024);
+    memset(decrypted_plaintext,0,1024);
+
     unsigned char aes_key[AES_KEYLENGTH];
     long int pt_len = strlen((char*)plaintext);
+    long int ct_len;
 
     if(DEBUG)
       printf("The Plaintext has length: %ld\n", pt_len);
@@ -142,5 +157,18 @@ int main (void){
       printf("The key is: %s\n", aes_key);
 
     //Call the encryption function and obtain the Cyphertext
-    encrypt(plaintext,pt_len,aes_key,iv,ciphertext);
+    ct_len = encrypt(plaintext,pt_len,aes_key,iv,ciphertext);
+
+    if(DEBUG)
+      printf("Encryption completed\n");
+
+    //Call the decryption function 
+    decrypt(ciphertext,ct_len,(char*) aes_key,iv,decrypted_plaintext);
+
+    if(DEBUG)
+      printf("Decryption completed and resulted in: %s\n", decrypted_plaintext);
+
+    free(ciphertext);
+    free(decrypted_plaintext);
+    return 1;
 }
