@@ -154,6 +154,7 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 			cerr << "ERR: malloc plaintext failed" << endl;
 			throw 1;
 		}
+		memset(plaintext,0,cipherlen);
 
 		// context definition
 		ctx = EVP_CIPHER_CTX_new();
@@ -221,22 +222,23 @@ int main (void){
 	string tp;
 	getFile.open("lorem_ipsum.txt",ios::in);
   if (getFile.is_open()){
-    getline(getFile, tp); //It has been written on one single row
+    getline(getFile, tp); //It has been written on one single row, so no cyclic reading needed
   	getFile.close();
   }
 
 	unsigned char* plaintext = (unsigned char*)malloc(tp.length()+1);
+	if(!plaintext){
+		cerr << "ERROR: plaintext space allocation went wrong" << endl;
+		return -1;
+	}
 	memset(plaintext,0,tp.length()+1);
 	strcpy((char*)plaintext, (char*)tp.c_str());
 
 	if(DEBUG)
 		printf("DEBUG: The Plaintext is: %s\n", plaintext);
 	
-	unsigned char* ciphertext = (unsigned char*)malloc(sizeof(char)*2048);
-	unsigned char* decrypted_plaintext = (unsigned char*)malloc(sizeof(char)*2048);
-
-	memset(ciphertext,0,2048);
-	memset(decrypted_plaintext,0,2048);
+	unsigned char* ciphertext;
+	unsigned char* decrypted_plaintext;
 
 	unsigned char aes_key[AES_KEYLENGTH];
 	long int pt_len = strlen((char*)plaintext);
