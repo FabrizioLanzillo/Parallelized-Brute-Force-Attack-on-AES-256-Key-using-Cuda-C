@@ -80,10 +80,6 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		outlen = 0;
 		cipherlen = 0;
 
-		if(DEBUG){	
-			printf("DEBUG1: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
-		}
-
 		// encrypt update on the message
 		ret = EVP_EncryptUpdate(ctx, ciphertext, &outlen, (unsigned char*)msg, msg_len);
 
@@ -93,10 +89,6 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		}
 
 		cipherlen += outlen;
-
-		if(DEBUG){	
-			printf("DEBUG2: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
-		}
 
 		ret = EVP_EncryptFinal(ctx, ciphertext + outlen, &outlen);
 
@@ -112,9 +104,6 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		}
 
 		cipherlen += outlen;
-		if(DEBUG){	
-			printf("DEBUG3: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
-		}
 	}
 	catch (int error_code) {
 
@@ -227,6 +216,21 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	return 0;
 }
 
+unsigned char* remove_padding_plaintext(unsigned char*& plaintext, int& plainlen){
+
+    int padding_size_bytes = (int)plaintext[plainlen-1];
+
+	if(DEBUG){
+		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
+	}
+
+	unsigned char* decrypted_plaintext_no_padding = (unsigned char*)malloc(plainlen - padding_size_bytes);
+
+	memcpy(decrypted_plaintext_no_padding, plaintext, plainlen - padding_size_bytes);
+	
+	return decrypted_plaintext_no_padding;
+}
+
 
 int main (void){
 	// First of all get the Plaintext
@@ -263,7 +267,7 @@ int main (void){
 	int ct_len;
 
 	if(DEBUG){	
-	  printf("DEBUG: The Plaintext has length: %ld\n", pt_len);
+		printf("DEBUG: The Plaintext has length: %ld\n", pt_len);
 	}
 
 	//Clean the memory
@@ -272,13 +276,13 @@ int main (void){
 	//Copy the key as a bitstream
 	strcpy((char*) aes_key, key);
 	if(DEBUG){
-	  printf("DEBUG: The key is: %s\n", aes_key);
+		printf("DEBUG: The key is: %s\n", aes_key);
 	}
 	//Call the encryption function and obtain the Cyphertext
 	int ret = cbc_encrypt_fragment(plaintext,pt_len,ciphertext,ct_len,aes_key);
 
 	if(DEBUG){
-	  printf("DEBUG: Encryption completed, the ciphertext has length: %d\n",ct_len);
+		printf("DEBUG: Encryption completed, the ciphertext has length: %d\n",ct_len);
 	}
 	if(ret != 0){
 		printf("Error during encryption\n");
@@ -288,9 +292,16 @@ int main (void){
 	//Call the decryption function 
 	cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_pt_len, aes_key);
 
+	unsigned char* decrypted_plaintext_no_padding = remove_padding_plaintext(decrypted_plaintext, ct_len);
+
 	if(DEBUG){
-	  printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext);
+		printf("DEBUG: Padding removed successfully\n");
 	}
+
+	if(DEBUG){
+		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext_no_padding);
+	}
+
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 
 
@@ -299,6 +310,7 @@ int main (void){
 	//Clean memory
 	free(ciphertext);
 	free(decrypted_plaintext);
+	free(decrypted_plaintext_no_padding);
 	free(plaintext);
 
 	return 1;
