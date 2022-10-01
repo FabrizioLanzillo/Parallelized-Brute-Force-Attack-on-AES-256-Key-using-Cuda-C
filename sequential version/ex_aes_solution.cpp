@@ -80,6 +80,10 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		outlen = 0;
 		cipherlen = 0;
 
+		if(DEBUG){	
+			printf("DEBUG1: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
+		}
+
 		// encrypt update on the message
 		ret = EVP_EncryptUpdate(ctx, ciphertext, &outlen, (unsigned char*)msg, msg_len);
 
@@ -89,6 +93,10 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		}
 
 		cipherlen += outlen;
+
+		if(DEBUG){	
+			printf("DEBUG2: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
+		}
 
 		ret = EVP_EncryptFinal(ctx, ciphertext + outlen, &outlen);
 
@@ -104,7 +112,9 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		}
 
 		cipherlen += outlen;
-
+		if(DEBUG){	
+			printf("DEBUG3: The cipherlen has length: %d and outlen: %d\n", cipherlen, outlen);
+		}
 	}
 	catch (int error_code) {
 
@@ -255,7 +265,7 @@ int main (void){
 	if(DEBUG){	
 	  printf("DEBUG: The Plaintext has length: %ld\n", pt_len);
 	}
-	
+
 	//Clean the memory
 	memset(aes_key,0,AES_KEYLENGTH/8);
 
