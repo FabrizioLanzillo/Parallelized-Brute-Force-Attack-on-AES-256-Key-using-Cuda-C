@@ -46,7 +46,7 @@ void handleErrors(void){
  */
 int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, unsigned char* symmetric_key){
 	int outlen;
-	int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
+	int block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
 	int ret;
 
 	EVP_CIPHER_CTX* ctx;
@@ -71,7 +71,7 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 		}
 			
 		// init encryption
-		ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
+		ret = EVP_EncryptInit(ctx, EVP_aes_256_cbc(), symmetric_key, iv);
 		if (ret != 1) {
 			cerr << "failed to initialize encryption" << endl;
 			ERR_print_errors_fp(stderr);
@@ -162,7 +162,7 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 		}
 
 		// init encryption
-		ret = EVP_DecryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
+		ret = EVP_DecryptInit(ctx, EVP_aes_256_cbc(), symmetric_key, iv);
 		if (ret != 1) {
 			cerr << "ERR: failed to initialize decryption" << endl;
 			ERR_print_errors_fp(stderr);
