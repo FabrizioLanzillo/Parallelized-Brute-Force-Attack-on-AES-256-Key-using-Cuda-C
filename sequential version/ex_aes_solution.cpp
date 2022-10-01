@@ -11,10 +11,14 @@
 #include <netinet/in.h>
 #include <thread>
 #include <string.h>
+#include <fstream>
+
+using namespace std;
 
 //Parameters definition
 #define AES_KEYLENGTH 256
 #define DEBUG true
+#define BLOCK_SIZE 16
 
 //              PARAMETERS
 //  Key generated from openssl enc -aes-256-cbc -k secret -P -md sha1
@@ -27,8 +31,6 @@ static const char salt[] = "B51DE47CC865460E";
 static const char key[] = "85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC";
 unsigned char* iv = (unsigned char*)"D8596B739EFAC0460E861F9B7790F996";
 
-
-
 //Utility function that handle encryption errors
 void handleErrors(void)
 {
@@ -37,138 +39,244 @@ void handleErrors(void)
 }
 
 /** Function that perform an encryption on AES-256
- * plaintext: Contain the data to be encrypted
- * plaintext_len: Contain the length of the data to be encrypted
- * iv: random nonce
+ * msg: Contain the data to be encrypted
+ * msg_len: Contain the length of the data to be encrypted
  * ciphertext: filled at the end of the encryption, contain the whole encrypted message
+ * cipherlen: filled with the length of the ciphertext
+ * symmetric_key: key for symmetric encryption
  */
-int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char* aes_key, unsigned char *iv, unsigned char *ciphertext)
-{
-  //Structure filled with encryption informations
-  EVP_CIPHER_CTX *ctx;
-  //Utility variables
-  int len;
-  int ciphertext_len;
+int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, unsigned char* symmetric_key){
+	int outlen;
+  int block_size = EVP_CIPHER_block_size(EVP_aes_128_cbc());
   int ret;
 
-  //Create and initialise the context
-  ctx = EVP_CIPHER_CTX_new();
-  //Encrypt init
-  ret = EVP_EncryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
-  if (DEBUG && ret != -1)
-    printf("Context set up SUCCESSFULLY\n");
-  else  
-    printf("Context set up ERROR with code: %d", ret);
-
-  // Calculate the encryption 
-  int n_blocks = plaintext_len / 16;
-  //for(int i = 0; i < n_blocks; i++){
-    if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)){
-      handleErrors();
-      return -1;
-    }
-  //}
-
-  if(DEBUG){
-    printf("The cyphertext has length: %d\n", len);
-  }
-
-  // Finalize the encrption, some bytes may be added at this stage
-  if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)){
-    handleErrors();
+  EVP_CIPHER_CTX* ctx;
+	
+	if (msg_len == 0) {
+    std::cerr << "message length is not allowed: " << msg_len << endl;
     return -1;
   }
-  ciphertext_len += len;
-  //Free the context
-  EVP_CIPHER_CTX_free(ctx);
-  
-  return ciphertext_len;
-}
-
-/** Function that perform a decryption on AES-256
- * plaintext: Contain the data to be encrypted
- * ciphertext_len: Contain the length of the encrypted data
- * iv: random nonce
- * aes_key: key for symmetric decryption
- * ciphertext: filled with the encryption, contain the whole encrypted message
- */
-int decrypt(unsigned char *ciphertext, int ciphertext_len, char* aes_key, unsigned char *iv, unsigned char *plaintext)
-{
-  EVP_CIPHER_CTX *ctx;
-
-  int len;
-  int ret;
-  int plaintext_len;
-
-  /* Create and initialise the context */
+	
+	try {
+    // buffer for the ciphertext + padding
+    ciphertext = (unsigned char*)malloc(msg_len + block_size);
+		if (!ciphertext) {
+			std::cerr << "malloc ciphertext failed" << endl;
+			throw 1;
+	}
+  // context definition
   ctx = EVP_CIPHER_CTX_new();
-  if(!ctx)
-    handleErrors();
+  if (!ctx) {
+    cerr << "context definition failed" << endl;
+    throw 2;
+  }
+		
+  // init encryption
+  ret = EVP_EncryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
+	if (ret != 1) {
+		cerr << "failed to initialize encryption" << endl;
+		ERR_print_errors_fp(stderr);
+		throw 4;
+	}
+  outlen = 0;
+  cipherlen = 0;
 
-  // Decrypt Init
-  ret = EVP_DecryptInit(ctx, EVP_aes_256_cbc(), (const unsigned char*)aes_key, iv);
-  if (DEBUG && ret != -1)
-    printf("Context set up SUCCESSFULLY\n");
-  else if(DEBUG && ret < 0)
-    printf("Context set up ERROR with code: %d", ret);
+  // encrypt update on the message
+  ret = EVP_EncryptUpdate(ctx, ciphertext, &outlen, (unsigned char*)msg, msg_len);
 
-  // Decrypt Update: one call is enough because our mesage is very short.
-  if(1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
-    handleErrors();
-  plaintext_len = len;
-  printf("CIAO\n");
-  // Decryption Finalize
-  if(1 != EVP_DecryptFinal(ctx, plaintext + len, &len)) handleErrors();
-  plaintext_len += len;
+  if (ret != 1) {
+    ERR_print_errors_fp(stderr);
+    throw 5;
+  }
 
-  // Clean the context!
-  EVP_CIPHER_CTX_free(ctx);
+  cipherlen += outlen;
 
-  return plaintext_len;
+  ret = EVP_EncryptFinal(ctx, ciphertext + outlen, &outlen);
+
+	if (ret != 1) {
+	ERR_print_errors_fp(stderr);
+	throw 6;
+	}
+
+  // extra check on the cipherlen overflow
+  if (cipherlen > numeric_limits<int>::max() - outlen) {
+    cerr << "overflow error on cipherlen" << endl;
+    throw 7;
+  }
+
+  cipherlen += outlen;
+
+  }
+  catch (int error_code) {
+
+    free(ciphertext);
+    if (error_code > 1){
+      EVP_CIPHER_CTX_free(ctx);
+    }
+
+    if (error_code > 3){
+      free(iv);
+    }
+
+    return -1;
+  }
+  return 0;   
 }
 
+/** Function that perform the decryption on AES-256
+ * ciphertext: contain the bitstream to be decrypted
+ * cipherlen: contain the length of the cipher
+ * plaintext: variable in which we return the decrypted PT
+ * plainlen: length of the decrypted PT
+ * symmetric_key: AES key used for decryption
+ */
+int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen, unsigned char* symmetric_key){
+	int outlen;
+  int ret;
+
+  EVP_CIPHER_CTX* ctx;
+	
+  if (cipherlen == 0) {
+    cerr << "ERR: input cipher len not allowed" << endl;
+    return -1;
+  }
+	
+	//error if iv is not set
+  if (iv == nullptr){
+    cerr << "ERR: missing iv for decryption" << endl;
+    return -1;
+  }
+
+  try {
+  	// buffer for the plaintext
+  	plaintext = (unsigned char*)malloc(cipherlen);
+		if (!plaintext) {
+			cerr << "ERR: malloc plaintext failed" << endl;
+			throw 1;
+		}
+
+		// context definition
+		ctx = EVP_CIPHER_CTX_new();
+		if (!ctx) {
+			cerr << "ERR: context definition failed" << endl;
+			throw 2;
+		}
+
+		// init encryption
+		ret = EVP_DecryptInit(ctx, EVP_aes_128_cbc(), symmetric_key, iv);
+		if (ret != 1) {
+			cerr << "ERR: failed to initialize decryption" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 3;
+		}
+
+		outlen = 0;
+		plainlen = 0;
+
+		ret = EVP_DecryptUpdate(ctx, plaintext + outlen, &outlen, (unsigned char*)ciphertext+outlen, cipherlen);
+
+		if (ret != 1) {
+			cerr << "ERR: failed decrypt update" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 4;
+		}
+
+		plainlen += outlen;
+
+		ret = EVP_DecryptFinal(ctx, plaintext + outlen, &outlen);
+
+		if (ret != 1) {
+			cerr << "ERR: failed decrypt finalization" << endl;
+			ERR_print_errors_fp(stderr);
+			throw 5;
+		}
+
+		// extra check on the cipherlen overflow
+		if (plainlen > numeric_limits<int>::max() - outlen) {
+			cerr << "ERR: overflow error on plaintext length" << endl;
+			throw 6;
+		}
+
+		plainlen += outlen;
+  }
+  catch (int error_code) {
+    free(plaintext);
+
+    if (error_code > 1){
+		  EVP_CIPHER_CTX_free(ctx);
+	  }
+
+		printf("ERROR DURING DECRYPTION: %d\n", error_code);
+
+  }
+	if(DEBUG)
+		printf("DEBUG: Decryption completed successfully\n");
+  return 0;
+}
 
 
 int main (void){
-    // TODO - Fix the string with the one obtained from a File, it may be more efficient to load it chunk by chunk inside the encrypt if the file is pretty big
+	// First of all get the Plaintext
+	fstream getFile;
+	string tp;
+	getFile.open("lorem_ipsum.txt",ios::in);
+  if (getFile.is_open()){
+    getline(getFile, tp); //It has been written on one single row
+  	getFile.close();
+  }
 
-    // First of all get the Plaintext
-    unsigned char* plaintext = (unsigned char*)"Hi I'm Federico and this is a string!";
-    
-    unsigned char* ciphertext = (unsigned char*)malloc(sizeof(char)*1024);
-    unsigned char* decrypted_plaintext = (unsigned char*)malloc(sizeof(char)*1024);
+	unsigned char* plaintext = (unsigned char*)malloc(tp.length()+1);
+	memset(plaintext,0,tp.length()+1);
+	strcpy((char*)plaintext, (char*)tp.c_str());
 
-    memset(ciphertext,0,1024);
-    memset(decrypted_plaintext,0,1024);
+	if(DEBUG)
+		printf("DEBUG: The Plaintext is: %s\n", plaintext);
+	
+	unsigned char* ciphertext = (unsigned char*)malloc(sizeof(char)*2048);
+	unsigned char* decrypted_plaintext = (unsigned char*)malloc(sizeof(char)*2048);
 
-    unsigned char aes_key[AES_KEYLENGTH];
-    long int pt_len = strlen((char*)plaintext);
-    long int ct_len;
+	memset(ciphertext,0,2048);
+	memset(decrypted_plaintext,0,2048);
 
-    if(DEBUG)
-      printf("The Plaintext has length: %ld\n", pt_len);
+	unsigned char aes_key[AES_KEYLENGTH];
+	long int pt_len = strlen((char*)plaintext);
+	int ct_len;
 
-    //Clean the memory
-    memset(aes_key,0,AES_KEYLENGTH/8);
+	if(DEBUG)
+	  printf("DEBUG: The Plaintext has length: %ld\n", pt_len);
 
-    //Copy the key as a bitstream
-    strcpy((char*) aes_key, key);
-    if(DEBUG)
-      printf("The key is: %s\n", aes_key);
+	//Clean the memory
+	memset(aes_key,0,AES_KEYLENGTH/8);
 
-    //Call the encryption function and obtain the Cyphertext
-    ct_len = encrypt(plaintext,pt_len,aes_key,iv,ciphertext);
+	//Copy the key as a bitstream
+	strcpy((char*) aes_key, key);
+	if(DEBUG)
+	  printf("DEBUG: The key is: %s\n", aes_key);
 
-    if(DEBUG)
-      printf("Encryption completed\n");
+	//Call the encryption function and obtain the Cyphertext
+	int ret = cbc_encrypt_fragment(plaintext,pt_len,ciphertext,ct_len,aes_key);
 
-    //Call the decryption function 
-    decrypt(ciphertext,ct_len,(char*) aes_key,iv,decrypted_plaintext);
+	if(DEBUG)
+	  printf("DEBUG: Encryption completed, the ciphertext has length: %d\n",ct_len);
+	if(ret != 0)
+		printf("Error during encryption\n");
 
-    if(DEBUG)
-      printf("Decryption completed and resulted in: %s\n", decrypted_plaintext);
+	int decrypted_pt_len;
+	//Call the decryption function 
+	cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_pt_len, aes_key);
 
-    free(ciphertext);
-    free(decrypted_plaintext);
-    return 1;
+	if(DEBUG)
+	  printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext);
+
+	//TEST COMPLETED, NOW PROCEED TO EXECUTE THE BRUTEFORCING
+
+
+	// ------------------------------------------------------ //
+
+	//Clean memory
+	free(ciphertext);
+	free(decrypted_plaintext);
+	free(plaintext);
+
+	return 1;
 }
