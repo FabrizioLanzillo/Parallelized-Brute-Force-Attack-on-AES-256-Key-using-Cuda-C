@@ -12,6 +12,7 @@
 #include <thread>
 #include <string.h>
 #include <fstream>
+#include <math.h> 
 
 using namespace std;
 
@@ -19,6 +20,11 @@ using namespace std;
 #define AES_KEYLENGTH 256
 #define DEBUG true
 #define BLOCK_SIZE 16
+
+//Brute Force configuration
+#define NUM_BYTES_TO_HACK 16
+#define BASE_NUMBER 16
+
 
 //              PARAMETERS
 //  Key generated from openssl enc -aes-256-cbc -k secret -P -md sha1
@@ -30,11 +36,28 @@ using namespace std;
 static const char salt[] = "B51DE47CC865460E";
 static const char key[] = "85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC";
 unsigned char* iv = (unsigned char*)"D8596B739EFAC0460E861F9B7790F996";
+static const int key_size = strlen((char*)key);
 
 //Utility function that handle encryption errors
 void handleErrors(void){
 	ERR_print_errors_fp(stderr);
 	abort();
+}
+
+unsigned char* remove_padding_plaintext(unsigned char*& plaintext, int& plainlen){
+
+    int padding_size_bytes = (int)plaintext[plainlen-1];
+
+	if(DEBUG){
+		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
+	}
+
+	unsigned char* decrypted_plaintext_no_padding = (unsigned char*)malloc(plainlen - padding_size_bytes);
+	memset(decrypted_plaintext_no_padding,0,plainlen);
+
+	memcpy(decrypted_plaintext_no_padding, plaintext, plainlen - padding_size_bytes);
+	
+	return decrypted_plaintext_no_padding;
 }
 
 /** Function that perform an encryption on AES-256
@@ -128,7 +151,7 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
  * plainlen: length of the decrypted PT
  * symmetric_key: AES key used for decryption
  */
-int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen, unsigned char* symmetric_key){
+int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen, unsigned char* symmetric_key){
 	int outlen;
 	int ret;
 
@@ -209,6 +232,9 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 		printf("ERROR DURING DECRYPTION: %d\n", error_code);
 
 	}
+	
+
+	plaintext_no_pad = remove_padding_plaintext(plaintext, cipherlen);
 
 	if(DEBUG){
 		printf("DEBUG: Decryption completed successfully\n");
@@ -216,21 +242,58 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	return 0;
 }
 
-unsigned char* remove_padding_plaintext(unsigned char*& plaintext, int& plainlen){
 
-    int padding_size_bytes = (int)plaintext[plainlen-1];
 
-	if(DEBUG){
-		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
+bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen){
+
+	// array containg de character of the key that has to be hacked
+	char bytes_to_hack [NUM_BYTES_TO_HACK +1];
+
+	for(int i = 0; i < pow (BASE_NUMBER, NUM_BYTES_TO_HACK); i++){
+
+		cout<< "-------------------------------------------- Attempt #"<<i+1<<" ----------------------------------------------"<<endl;
+		// clean of the array
+		memset(bytes_to_hack,0,key_size);
+		// the . set the precision and * the number of bytes to represent the number in hex
+		sprintf (bytes_to_hack, "%.*X", NUM_BYTES_TO_HACK, i);
+		
+		// we assemble the key with the new character
+		memcpy(hacked_key + ((key_size - NUM_BYTES_TO_HACK)), bytes_to_hack, NUM_BYTES_TO_HACK);
+		if(DEBUG){
+			printf ("[%s] is the key\n", hacked_key);
+		}
+
+		
+		if(DEBUG){
+			printf("DEBUG: knowed_plaintext: %s\n", knowed_plaintext);
+			printf("DEBUG: plaintext_no_pad: %s\n", plaintext_no_pad);
+		}
+
+		int ret = cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plaintext_no_pad, plainlen, hacked_key);
+		if(ret != 0){
+			printf("Error during decryption\n");
+			return false;
+		}
+
+		if(DEBUG){
+			printf("DEBUG: knowed_plaintext: %s\n", knowed_plaintext);
+			printf("DEBUG: plaintext_no_pad: %s\n", plaintext_no_pad);
+		}
+
+		if(!strcmp((char *)knowed_plaintext,(char *)plaintext_no_pad)){
+			return true;
+		}
+		else{
+			printf("Key not found\n");
+			memset(plaintext_no_pad,0,plainlen);
+		}
+		cout<< "--------------------------------------------------------------------------------------------------------------"<<endl;
 	}
 
-	unsigned char* decrypted_plaintext_no_padding = (unsigned char*)malloc(plainlen - padding_size_bytes);
 
-	memcpy(decrypted_plaintext_no_padding, plaintext, plainlen - padding_size_bytes);
-	
-	return decrypted_plaintext_no_padding;
+	cout<< "**************************************************"<<endl;
+	return false;
 }
-
 
 int main (void){
 	// First of all get the Plaintext
@@ -261,6 +324,7 @@ int main (void){
 	//Variables allocation
 	unsigned char* ciphertext;
 	unsigned char* decrypted_plaintext;
+	unsigned char* decrypted_plaintext_no_pad;
 
 	unsigned char aes_key[AES_KEYLENGTH];
 	long int pt_len = strlen((char*)plaintext);
@@ -290,27 +354,55 @@ int main (void){
 
 	int decrypted_pt_len;
 	//Call the decryption function 
-	cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_pt_len, aes_key);
+	ret = 0;
+	ret = cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_plaintext_no_pad, decrypted_pt_len, aes_key);
+	if(ret != 0){
+		printf("Error during decryption\n");
+	}
 
-	unsigned char* decrypted_plaintext_no_padding = remove_padding_plaintext(decrypted_plaintext, ct_len);
+	
 
 	if(DEBUG){
 		printf("DEBUG: Padding removed successfully\n");
 	}
 
 	if(DEBUG){
-		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext_no_padding);
+		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext_no_pad);
 	}
 
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 
+    unsigned char* hacked_key = (unsigned char*)malloc(key_size);
+    memcpy(hacked_key, key, (key_size - NUM_BYTES_TO_HACK));
+
+	memset(decrypted_plaintext,0,ct_len);
+	memset(decrypted_plaintext_no_pad,0,ct_len);
+	decrypted_pt_len = 0;
+	
+	if(DEBUG){
+		printf("DEBUG: Start Hack\n");
+	}
+
+	bool res = decryption_brute_force(hacked_key, plaintext, ciphertext, ct_len, decrypted_plaintext, decrypted_plaintext_no_pad, decrypted_pt_len);
+	if(DEBUG){
+		printf("DEBUG:pippo\n");
+	}
+	
+	if(!res){
+		printf("Error during brute forcing attack\n");
+	}
+
+	if(DEBUG){
+		printf("DEBUG: Brote Force completed and key obtained: %s\n", hacked_key);
+	}
 
 	// ------------------------------------------------------ //
 
 	//Clean memory
 	free(ciphertext);
 	free(decrypted_plaintext);
-	free(decrypted_plaintext_no_padding);
+	free(decrypted_plaintext_no_pad);
+	free(hacked_key);
 	free(plaintext);
 
 	return 1;
