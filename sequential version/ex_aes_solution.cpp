@@ -226,17 +226,21 @@ int main (void){
   	getFile.close();
   }
 
+	//Allocating pt space
 	unsigned char* plaintext = (unsigned char*)malloc(tp.length()+1);
 	if(!plaintext){
 		cerr << "ERROR: plaintext space allocation went wrong" << endl;
 		return -1;
 	}
+
+	//Conversion from string to unsigned char*
 	memset(plaintext,0,tp.length()+1);
 	strcpy((char*)plaintext, (char*)tp.c_str());
 
 	if(DEBUG)
 		printf("DEBUG: The Plaintext is: %s\n", plaintext);
 	
+	//Variables allocation
 	unsigned char* ciphertext;
 	unsigned char* decrypted_plaintext;
 
@@ -270,7 +274,7 @@ int main (void){
 	if(DEBUG)
 	  printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext);
 
-	//TEST COMPLETED, NOW PROCEED TO EXECUTE THE BRUTEFORCING
+	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 
 
 	// ------------------------------------------------------ //
