@@ -44,22 +44,6 @@ void handleErrors(void){
 	abort();
 }
 
-unsigned char* remove_padding_plaintext(unsigned char*& plaintext, int& plainlen){
-
-    int padding_size_bytes = (int)plaintext[plainlen-1];
-
-	if(DEBUG){
-		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
-	}
-
-	unsigned char* decrypted_plaintext_no_padding = (unsigned char*)malloc(plainlen - padding_size_bytes);
-	memset(decrypted_plaintext_no_padding,0,plainlen);
-
-	memcpy(decrypted_plaintext_no_padding, plaintext, plainlen - padding_size_bytes);
-	
-	return decrypted_plaintext_no_padding;
-}
-
 /** Function that perform an encryption on AES-256
  * msg: Contain the data to be encrypted
  * msg_len: Contain the length of the data to be encrypted
@@ -69,7 +53,6 @@ unsigned char* remove_padding_plaintext(unsigned char*& plaintext, int& plainlen
  */
 int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, unsigned char* symmetric_key){
 	int outlen;
-	int block_size = EVP_CIPHER_block_size(EVP_aes_256_cbc());
 	int ret;
 
 	EVP_CIPHER_CTX* ctx;
@@ -80,12 +63,6 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 	}
 
 	try {
-	// buffer for the ciphertext + padding
-		ciphertext = (unsigned char*)malloc(msg_len + block_size);
-		if (!ciphertext) {
-			std::cerr << "malloc ciphertext failed" << endl;
-			throw 1;
-		}
 		// context definition
 		ctx = EVP_CIPHER_CTX_new();
 		if (!ctx) {
@@ -135,10 +112,6 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
 			EVP_CIPHER_CTX_free(ctx);
 		}
 
-		if (error_code > 3){
-			free(iv);
-		}
-
 		return -1;
 	}
 	return 0;   
@@ -151,7 +124,7 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
  * plainlen: length of the decrypted PT
  * symmetric_key: AES key used for decryption
  */
-int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen, unsigned char* symmetric_key){
+int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen, unsigned char* symmetric_key){
 	int outlen;
 	int ret;
 
@@ -169,14 +142,6 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	}
 
 	try {
-		// buffer for the plaintext
-		plaintext = (unsigned char*)malloc(cipherlen);
-		if (!plaintext) {
-			cerr << "ERR: malloc plaintext failed" << endl;
-			throw 1;
-		}
-		memset(plaintext,0,cipherlen);
-
 		// context definition
 		ctx = EVP_CIPHER_CTX_new();
 		if (!ctx) {
@@ -232,9 +197,6 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 		printf("ERROR DURING DECRYPTION: %d\n", error_code);
 
 	}
-	
-
-	plaintext_no_pad = remove_padding_plaintext(plaintext, cipherlen);
 
 	if(DEBUG){
 		printf("DEBUG: Decryption completed successfully\n");
@@ -242,18 +204,18 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	return 0;
 }
 
-
-
 bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen){
 
 	// array containg de character of the key that has to be hacked
 	char bytes_to_hack [NUM_BYTES_TO_HACK +1];
-
+	int padding_size_bytes;
 	for(int i = 0; i < pow (BASE_NUMBER, NUM_BYTES_TO_HACK); i++){
 
 		cout<< "-------------------------------------------- Attempt #"<<i+1<<" ----------------------------------------------"<<endl;
 		// clean of the array
 		memset(bytes_to_hack,0,key_size);
+		memset(plaintext,0,cipherlen);
+		memset(plaintext_no_pad,0,cipherlen);
 		// the . set the precision and * the number of bytes to represent the number in hex
 		sprintf (bytes_to_hack, "%.*X", NUM_BYTES_TO_HACK, i);
 		
@@ -269,11 +231,19 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			printf("DEBUG: plaintext_no_pad: %s\n", plaintext_no_pad);
 		}
 
-		int ret = cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plaintext_no_pad, plainlen, hacked_key);
+		int ret = cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plainlen, hacked_key);
 		if(ret != 0){
 			printf("Error during decryption\n");
 			return false;
 		}
+
+		padding_size_bytes = (int)plaintext[cipherlen-1];
+		if(DEBUG){
+			printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
+		}
+		//Copy the PT without padding
+		memset(plaintext_no_pad,0,cipherlen - padding_size_bytes);
+		memcpy(plaintext_no_pad, plaintext, cipherlen - padding_size_bytes);
 
 		if(DEBUG){
 			printf("DEBUG: knowed_plaintext: %s\n", knowed_plaintext);
@@ -321,14 +291,18 @@ int main (void){
 		printf("DEBUG: The Plaintext is: %s\n", plaintext);
 	}
 	
-	//Variables allocation
-	unsigned char* ciphertext;
-	unsigned char* decrypted_plaintext;
-	unsigned char* decrypted_plaintext_no_pad;
-
+	//Variables allocation		
 	unsigned char aes_key[AES_KEYLENGTH];
 	long int pt_len = strlen((char*)plaintext);
 	int ct_len;
+
+	//Encryption needed variables
+	unsigned char* ciphertext = (unsigned char*)malloc(pt_len + BLOCK_SIZE);
+	if(!ciphertext){
+		cerr << "ERROR: ciphertext space allocation went wrong" << endl;
+		return -1;
+	}
+	memset(ciphertext,0,pt_len + BLOCK_SIZE);
 
 	if(DEBUG){	
 		printf("DEBUG: The Plaintext has length: %ld\n", pt_len);
@@ -352,14 +326,38 @@ int main (void){
 		printf("Error during encryption\n");
 	}
 
+	// Decryption needed variables
+	unsigned char* decrypted_plaintext = (unsigned char*)malloc(ct_len);
+	if(!decrypted_plaintext){
+		cerr << "ERROR: decrypted_plaintext space allocation went wrong" << endl;
+		return -1;
+	}
+	memset(decrypted_plaintext,0,ct_len);
+
 	int decrypted_pt_len;
 	//Call the decryption function 
 	ret = 0;
-	ret = cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_plaintext_no_pad, decrypted_pt_len, aes_key);
+	ret = cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_pt_len, aes_key);
 	if(ret != 0){
 		printf("Error during decryption\n");
 	}
 
+	//Calculating the size of the Plaintext without padding
+	int padding_size_bytes = (int)decrypted_plaintext[ct_len-1];
+
+	if(DEBUG){
+		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
+	}
+
+	//Allocate the buffer for PT without the padding
+	unsigned char* decrypted_plaintext_no_pad = (unsigned char*)malloc(ct_len - padding_size_bytes);
+	if(!decrypted_plaintext_no_pad){
+		cerr << "ERROR: decrypted_plaintext_no_pad space allocation went wrong" << endl;
+		return -1;
+	}
+	//Copy the PT without padding
+	memset(decrypted_plaintext_no_pad,0,ct_len - padding_size_bytes);
+	memcpy(decrypted_plaintext_no_pad, plaintext, ct_len - padding_size_bytes);
 	
 
 	if(DEBUG){
@@ -393,7 +391,7 @@ int main (void){
 	}
 
 	if(DEBUG){
-		printf("DEBUG: Brote Force completed and key obtained: %s\n", hacked_key);
+		printf("DEBUG: Brute Force completed and key obtained: %s\n", hacked_key);
 	}
 
 	// ------------------------------------------------------ //
