@@ -35,10 +35,18 @@ using namespace std;
 //  iv = D8596B739EFAC0460E861F9B7790F996
 
 //Key in HEX format as global parameters
-static const char salt[] = "B51DE47CC865460E";
-static const char key[] = "85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC";
-unsigned char* iv = (unsigned char*)"D8596B739EFAC0460E861F9B7790F996";
 static const int key_size = 32;
+
+const string plaintext_file = "plaintext.txt";
+const string ciphertext_file = "ciphertext.txt";
+const string key_aes_hex_file = "key_aes_hex.txt";
+const string key_aes_file = "key_aes.txt";
+const string key_wrong_file = "key_wrong.txt";
+const string iv_file_hex = "iv_hex.txt";
+const string iv_file = "iv.txt";
+const string salt_file_hex = "salt_hex.txt";
+const string salt_file = "salt.txt";
+
 
 //Utility function that handle encryption errors
 void handleErrors(void){
@@ -53,7 +61,7 @@ void handleErrors(void){
  * cipherlen: filled with the length of the ciphertext
  * symmetric_key: key for symmetric encryption
  */
-int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, unsigned char* symmetric_key){
+int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& ciphertext, int& cipherlen, unsigned char* symmetric_key, unsigned char* iv){
 	int outlen;
 	int ret;
 
@@ -126,7 +134,7 @@ int cbc_encrypt_fragment(unsigned char* msg, int msg_len, unsigned char*& cipher
  * plainlen: length of the decrypted PT
  * symmetric_key: AES key used for decryption
  */
-int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen, unsigned char* symmetric_key){
+int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, int& plainlen, unsigned char* symmetric_key, unsigned char *iv){
 	int outlen;
 	int ret;
 
@@ -206,7 +214,7 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	return 0;
 }
 
-bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen){
+bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen, unsigned char*& iv){
 
 	// array containg de character of the key that has to be hacked
 	char bytes_to_hack [NUM_BYTES_TO_HACK +1];
@@ -233,7 +241,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			printf("DEBUG: plaintext_no_pad: %s\n", plaintext_no_pad);
 		}
 
-		int ret = cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plainlen, hacked_key);
+		int ret = cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plainlen, hacked_key, iv);
 		if(ret != 0){
 			printf("Error during decryption\n");
 			return false;
@@ -267,14 +275,126 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 	return false;
 }
 
+void convert_key(string file_to_read, string file_to_save, unsigned char* key){
+
+	string str;
+	ifstream infile;
+	infile.open(file_to_read, ios::in );
+
+	if (infile.is_open()){
+
+		getline(infile, str); // The first line of file should be the key
+		infile.close();
+	}
+	else {
+		cout << "Unable to open file";
+	}
+
+	istringstream hex_chars_stream(str);
+	
+	int i = 0;
+	unsigned int c;
+	while (hex_chars_stream >> hex >> c){
+		key[i] = c;
+		i++;
+	}
+
+	ofstream SaveFile(file_to_save, ios::out | ios::binary);
+	SaveFile << key;
+	SaveFile.close();
+
+}
+
+void read_data_drom_file(string file, unsigned char*& pointer){
+	/*
+	fstream getFile;
+	string tp;
+	getFile.open(file,ios::in);
+	if (getFile.is_open()){
+		getline(getFile, tp); //It has been written on one single row, so no cyclic reading needed
+		getFile.close();
+	}
+	*/
+	fstream getFile;
+	string str;
+	string file_contents;
+	getFile.open(file,ios::in | ios::binary);
+
+	while (getline(getFile, str)){
+		file_contents += str;
+		file_contents.push_back('\n');
+	} 
+
+	file_contents.pop_back();
+	
+
+	//Conversion from string to unsigned char*
+	cout<<"Lunghezza letta: "<<file_contents.length()<<endl;
+	memset(pointer,0,file_contents.length()+1);
+	strcpy((char*)pointer, (char*)file_contents.c_str());
+
+}
+
+string hexToASCII(string hex)
+{
+    // initialize the ASCII code string as empty.
+    string ascii = "";
+    for (size_t i = 0; i < hex.length(); i += 2)
+    {
+        // extract two characters from hex string
+        string part = hex.substr(i, 2);
+ 
+        // change it into base 16 and
+        // typecast as the character
+        char ch = stoul(part, nullptr, 16);
+		printf("[%ld] %c\n", i, ch);
+        // add this char to final ASCII string
+        ascii += ch;
+		printf("[%ld]\n", ascii.length());
+    }
+    return ascii;
+}
 
 int main (void){
 	
+	/* ------------------------------------- GET KEY -------------------------------------------------------- */
+	printf("------------------------------------- GET KEY --------------------------------------------------------\n");
+	
+	unsigned char* iv = (unsigned char*)malloc(16);
+	convert_key(iv_file_hex, iv_file, iv);
+	free(iv);
+	unsigned char* iv_aes = (unsigned char*)malloc(16);
+	if(!iv_aes){
+		cerr << "ERROR: plaintext space allocation went wrong" << endl;
+	}
+	memset(iv_aes,0,16);
+	read_data_drom_file(iv_file, iv_aes);
+	cout<<"IV: "<<iv_aes<<endl;
+
+	unsigned char* salt = (unsigned char*)malloc(8);
+	convert_key(salt_file_hex, salt_file, salt);
+	free(salt);
+
+	unsigned char* key = (unsigned char*)malloc(32);
+	convert_key(key_aes_hex_file, key_aes_file, key);
+	free(key);
+	
+	unsigned char* k = (unsigned char*)malloc(32);
+	if(!k){
+		cerr << "ERROR: plaintext space allocation went wrong" << endl;
+	}
+	memset(k,0,32);
+	read_data_drom_file(key_aes_file, k);
+	cout<<"KEY TO ENCRYPT: "<<k<<endl;
+	
+
+	printf("------------------------------------------------------------------------------------------------------\n");
 	/* ------------------------------------- GET PT -------------------------------------------------------- */
+	printf("------------------------------------- GET PT ---------------------------------------------------------\n");
 
 	fstream getFile;
 	string tp;
-	getFile.open("lorem_ipsum.txt",ios::in);
+	getFile.open(plaintext_file,ios::in);
 
 	if (getFile.is_open()){
 		getline(getFile, tp); //It has been written on one single row, so no cyclic reading needed
@@ -296,21 +416,9 @@ int main (void){
 		printf("DEBUG: The Plaintext is: %s\n", plaintext);
 	}
 
-	/* ------------------------------------- GET KEY -------------------------------------------------------- */
-
-	unsigned char* k = (unsigned char*)malloc(32);
-	memset(k,0,32);
-	string s;
-
-	getFile.open("key_aes.txt",ios::in);
-
-	if (getFile.is_open()){
-		getline(getFile, s); //It has been written on one single row, so no cyclic reading needed
-		getFile.close();
-	}
-
-	memcpy(k,s.c_str(),32);
-	cout<<"KEY: "<<k<<endl;
+	printf("------------------------------------------------------------------------------------------------------\n");
+	/* ------------------------------------- Encryption  -------------------------------------------------------- */
+	printf("------------------------------------- GET ENC --------------------------------------------------------\n");
 
 	//Variables allocation		
 	long int pt_len = strlen((char*)plaintext);
@@ -329,14 +437,39 @@ int main (void){
 	}
 
 	//Call the encryption function and obtain the Cyphertext
-	int ret = cbc_encrypt_fragment(plaintext,pt_len,ciphertext,ct_len,k);
+	int ret = cbc_encrypt_fragment(plaintext,pt_len,ciphertext,ct_len,k, iv_aes);
 
-	if(DEBUG){
-		printf("DEBUG: Encryption completed, the ciphertext has length: %d\n",ct_len);
-	}
 	if(ret != 0){
 		printf("Error during encryption\n");
 	}
+	if(DEBUG){
+		printf("DEBUG: Encryption completed, the ciphertext is: %s\n",ciphertext);
+	}
+	if(DEBUG){
+		printf("DEBUG: The ciphertext has length: %d\n",ct_len);
+		printf("DEBUG: The ciphertext has effective length: %ld\n",strlen((char*)ciphertext));
+	}
+
+	ofstream outfile;
+	outfile.open("message.aes", ios::out | ios::binary);
+	char pippo [3];
+	for(int i=0; i<ct_len; i++){
+		sprintf(pippo, "%02X", (int)ciphertext[i]);
+		outfile <<  pippo;
+	}
+
+	outfile.close();
+	cout << "Wrote encrypted message to file message.aes" << endl;
+
+
+
+
+	cout<<endl;
+
+
+	printf("------------------------------------------------------------------------------------------------------\n");
+	/* ------------------------------------- Decryption  -------------------------------------------------------- */
+	printf("------------------------------------- GET DEC --------------------------------------------------------\n");
 
 	// Decryption needed variables
 	unsigned char* decrypted_plaintext = (unsigned char*)malloc(ct_len);
@@ -346,14 +479,45 @@ int main (void){
 	}
 	memset(decrypted_plaintext,0,ct_len);
 
+	unsigned char* ciphertext_saved = (unsigned char*)malloc(ct_len);
+	if(!ciphertext_saved){
+		cerr << "ERROR: ciphertext_saved space allocation went wrong" << endl;
+	}
+	memset(ciphertext_saved,0,ct_len);
+	
+	string msgstr;
+	ifstream infile;
+	infile.open("message.aes", ios::in | ios::binary);
+
+	if (infile.is_open())
+	{
+		getline(infile, msgstr); // The first line of file is the message
+		cout << "Read in encrypted message from message.aes" << endl;
+		infile.close();
+	}
+
+	else cout << "Unable to open file";
+
+	string file_contents = hexToASCII(msgstr);
+
+	memset(ciphertext_saved,0,file_contents.length()+1);
+
+	for(int i=0; i<448; i++){
+		ciphertext_saved[i] = file_contents[i];
+	}
+
+	printf("DEBUG: the ciphertext: %s\n",ciphertext_saved);
+	printf("DEBUG: The ciphertext has effective length: %ld\n",strlen((char*)ciphertext_saved));
+
 	int decrypted_pt_len;
 	//Call the decryption function 
 	ret = 0;
-	ret = cbc_decrypt_fragment (ciphertext, ct_len, decrypted_plaintext, decrypted_pt_len, k);
+	ret = cbc_decrypt_fragment (ciphertext_saved, ct_len, decrypted_plaintext, decrypted_pt_len, k, iv_aes);
 	if(ret != 0){
 		printf("Error during decryption\n");
 	}
 
+	/*
 	//Calculating the size of the Plaintext without padding
 	int padding_size_bytes = (int)decrypted_plaintext[ct_len-1];
 
@@ -376,10 +540,12 @@ int main (void){
 		printf("DEBUG: Padding removed successfully\n");
 	}
 
-	if(DEBUG){
-		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext_no_pad);
-	}
+	*/
 
+	if(DEBUG){
+		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext);
+	}
+/*
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 
     unsigned char* hacked_key = (unsigned char*)malloc(key_size);
@@ -410,6 +576,11 @@ int main (void){
 
 
 	free(k);
+	free(iv_aes);
+	free(plaintext);
+	free(ciphertext);
+	free(decrypted_plaintext);
+	//free(decrypted_plaintext_no_pad);
 
 	return 1;
 }
