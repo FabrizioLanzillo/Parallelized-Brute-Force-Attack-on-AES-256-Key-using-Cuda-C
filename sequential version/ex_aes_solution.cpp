@@ -27,7 +27,7 @@ using namespace std;
 
 //Brute Force configuration
 #define NUM_BYTES_TO_HACK 16
-#define BASE_NUMBER 16
+#define BASE_NUMBER 8
 
 
 //              PARAMETERS
