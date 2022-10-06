@@ -281,6 +281,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 
 		// the . set the precision and * the number of bytes to represent the number in hex
 		sprintf (bytes_to_hack, "%.*d", NUM_BYTES_TO_HACK, i);
+		//Funziona con sprintf (bytes_to_hack, "%c", i);
 
 		// we assemble the key with the new character
 		memcpy(hacked_key + ((key_size - NUM_BYTES_TO_HACK)), bytes_to_hack, NUM_BYTES_TO_HACK);
@@ -296,15 +297,12 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			continue;
 		}
 
-		if(DEBUG){
-			printf("DEBUG: knowed_plaintext: %s\n", knowed_plaintext);
-			printf("DEBUG: plaintext_no_pad: %s\n", plaintext);
-		}
-
+		//If we get here the decryption has been completed successfully, we now proceed to remove the padding
 		padding_size_bytes = (int)plaintext[cipherlen-1];
 		if(DEBUG){
 			printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
 		}
+
 		//Copy the PT without padding
 		memset(plaintext_no_pad,0,cipherlen - padding_size_bytes);
 		memcpy(plaintext_no_pad, plaintext, cipherlen - padding_size_bytes);
