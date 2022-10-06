@@ -237,6 +237,19 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, int cipherlen, unsigned cha
 	return 0;
 }
 
+bool remove_padding(int size, unsigned char*& plaintext_with_pad, unsigned char*& plaintext){
+	//Calculating the size of the Plaintext without padding
+	int padding_size_bytes = (int)plaintext_with_pad[size-1];
+
+	if(padding_size_bytes > BLOCK_SIZE){
+		return false;
+	}
+
+	memcpy(plaintext, plaintext_with_pad, size - padding_size_bytes);
+	
+	return true;
+}
+
 bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen, unsigned char*& iv){
 
 	// array containg de character of the key that has to be hacked
@@ -472,33 +485,32 @@ int main (void){
 		printf("Error during decryption\n");
 	}
 
-	/*
-	//Calculating the size of the Plaintext without padding
-	int padding_size_bytes = (int)decrypted_plaintext[ct_len-1];
-
-	if(DEBUG){
-		printf("DEBUG: The size of the padding to remove is: %d\n", padding_size_bytes);
-	}
-
 	//Allocate the buffer for PT without the padding
-	unsigned char* decrypted_plaintext_no_pad = (unsigned char*)malloc(ct_len - padding_size_bytes);
+	unsigned char* decrypted_plaintext_no_pad = (unsigned char*)malloc(ct_len);
 	if(!decrypted_plaintext_no_pad){
 		cerr << "ERROR: decrypted_plaintext_no_pad space allocation went wrong" << endl;
 		return -1;
 	}
-	//Copy the PT without padding
-	memset(decrypted_plaintext_no_pad,0,ct_len - padding_size_bytes);
-	memcpy(decrypted_plaintext_no_pad, plaintext, ct_len - padding_size_bytes);
-	
+	memset(decrypted_plaintext_no_pad,0, ct_len);
+	bool res = remove_padding(ct_len, decrypted_plaintext, decrypted_plaintext_no_pad);
 
 	if(DEBUG){
-		printf("DEBUG: Padding removed successfully\n");
+		if(res){
+			printf("DEBUG: Padding removed successfully\n");
+		}
+		else{
+			printf("DEBUG: Padding remove error\n");
+		}
+		
 	}
-
-	*/
 
 	if(DEBUG){
 		printf("DEBUG: Decryption completed and resulted in: %s\n", decrypted_plaintext);
+		printf("DEBUG: Rem pad in: %s\n", decrypted_plaintext_no_pad);
+	}
+
+	if(!strcmp((const char*)plaintext, (const char*)decrypted_plaintext_no_pad)){
+		printf("pippo\n");
 	}
 /*
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
@@ -535,7 +547,7 @@ int main (void){
 	free(plaintext);
 	free(ciphertext);
 	free(decrypted_plaintext);
-	//free(decrypted_plaintext_no_pad);
+	free(decrypted_plaintext_no_pad);
 
 	return 1;
 }
