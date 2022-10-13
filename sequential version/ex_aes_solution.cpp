@@ -26,7 +26,7 @@ using namespace std;
 #define PLAINTEXT_LENGHT 445
 
 //Brute Force configuration
-#define NUM_BYTES_TO_HACK 4
+#define NUM_BITS_TO_HACK 32
 #define BASE_NUMBER 2
 
 
@@ -269,51 +269,69 @@ bool remove_padding(int size, unsigned char*& plaintext_with_pad, unsigned char*
 bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_plaintext, unsigned char* ciphertext, int cipherlen, unsigned char*& plaintext, unsigned char*& plaintext_no_pad, int& plainlen, unsigned char*& iv){
 
 	unsigned char ascii_character;
-	// array containg de character of the key that has to be hacked
-	unsigned char bytes_to_hack [NUM_BYTES_TO_HACK +1];
-	for(uint64_t i = 0; i < pow (BASE_NUMBER, 8*NUM_BYTES_TO_HACK); i++){	//2^8*NUM_BYTES_TO_HACK Cycles
-		if(i%100000==0){
+	//Calculate the number of cycles before the cycle to optimize
+	uintmax_t index = pow (BASE_NUMBER, NUM_BITS_TO_HACK);
+
+	// array containg de character of the key that has to be hacked (i.e. 20 bits = 3 Bytes)
+	unsigned char bytes_to_hack [NUM_BITS_TO_HACK/8 + 2];
+
+	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+	//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
+	uint8_t tmp, rem_bits = NUM_BITS_TO_HACK % 8;
+
+	//Copy inside the bytes_to_hack the last byte
+	memcpy(bytes_to_hack + (NUM_BITS_TO_HACK / 8), hacked_key + (NUM_BITS_TO_HACK / 8), 1); // Copy just the last byte 
+
+	//Use the shift to clean up the part that we don't know of the last byte (like 4 bits in case of 20 bits to discover)
+	if(NUM_BITS_TO_HACK % 8 != 0){
+		//With 20 bits -> 2
+		bytes_to_hack[NUM_BITS_TO_HACK / 8 ] = hacked_key[NUM_BITS_TO_HACK / 8] >> rem_bits;
+		tmp = bytes_to_hack[NUM_BITS_TO_HACK / 8] << rem_bits;
+	}
+
+	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+
+	for(uintmax_t i = 0; i < index; i++){	//2^NUM_BITES_TO_HACK Cycles
+
+		//Get the index address in order to extract and manage one byte at a time
+		uint8_t *pointer = (uint8_t*)&i;
+
+		if(i%1000000==0){
 			cout<<"Attempt "<<i<<endl;
 		}
 		//cout<< "-------------------------------------------- Attempt #"<<i+1<<" ----------------------------------------------"<<endl;
-		// clean of the array
-		memset(bytes_to_hack,0,NUM_BYTES_TO_HACK + 1);
+		
+		// clean of the array (only the bytes that have to be completely cleaned, i.e. last two bytes)
+		memset(bytes_to_hack,0,NUM_BITS_TO_HACK/8);
+
 		memset(plaintext,0,cipherlen);
 		memset(plaintext_no_pad,0,cipherlen);
 
-		for(int j=0;j < NUM_BYTES_TO_HACK; j++){
+		
+
+		// First copy the bytes that are whole
+		for(int j=0;j < NUM_BITS_TO_HACK/8 + 1; j++){
+			if(NUM_BITS_TO_HACK % 8 != 0 && j == NUM_BITS_TO_HACK/8){
+				//The addition of unsigned number perform the append correctly until the value inside pointer[j] overcome the capacity of the bit to be copied, 
+				//but this will never happen since we stop the cycle before it happen
+				bytes_to_hack[j] = tmp + pointer[j];
+				continue;
+			}
 			ascii_character = char(i >> (8*j));
-			sprintf((char*)(bytes_to_hack + j),"%c",ascii_character);
+			sprintf((char*)&bytes_to_hack[j],"%c",ascii_character);
+			//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
 		}
-		
-		//Funziona con sprintf (bytes_to_hack, "%c", i);
-		
+
 		// we assemble the key with the new character
-		memcpy(hacked_key + ((key_size - NUM_BYTES_TO_HACK)), bytes_to_hack, NUM_BYTES_TO_HACK);
-		
+		memcpy(&hacked_key[key_size - (NUM_BITS_TO_HACK/8)], bytes_to_hack, (NUM_BITS_TO_HACK/8 + 1));
+
 		//If the decrypt returns an error the key is wrong for sure
 		if(cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plainlen, hacked_key, iv) == -1){
 			//printf("--------------------------------------------------------------------------------------------------------\n");
 			continue;
 		}
 
-		bool ret  = remove_padding(cipherlen, plaintext, plaintext_no_pad);
-
-		/*if(DEBUG){
-			if(ret){
-				printf("DEBUG: Padding removed successfully\n");
-			}
-			else{
-				printf("DEBUG: Padding remove error\n");
-				continue;
-			}
-			
-		}
-
-		if(DEBUG){
-			printf("DEBUG: Removed padding resulted in: %s\n", plaintext_no_pad);
-		}
-		*/
+		remove_padding(cipherlen, plaintext, plaintext_no_pad);
 
 		if(!strcmp((const char*)knowed_plaintext, (const char*)plaintext_no_pad)){
 			if(DEBUG){
@@ -322,6 +340,8 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			}
 			return true;
 		}
+		else
+			continue;
 		//cout<< "--------------------------------------------------------------------------------------------------------------"<<endl;
 
 	}
@@ -523,14 +543,17 @@ int main (void){
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 	printf("--------------------------------- PROCEED WITH BRUTEFORCING ----------------------------------------------\n");
 
+	printf("Bytes to hack: %d\n", NUM_BITS_TO_HACK/8);
+
+	//Copy the amount of known bits, ex. if 20 bits has to be discovered we copy all the key except the last two bytes, the last for bits will be removed using the shift later
     unsigned char* hacked_key = (unsigned char*)malloc(key_size);
 	memset(hacked_key,0,key_size);
-    memcpy(hacked_key, key_aes, (key_size - NUM_BYTES_TO_HACK));
+	memcpy(hacked_key, key_aes, (key_size));
 
 	if(DEBUG){
 		printf("HACKED KEY: %s\n", hacked_key);
 		printf("KEY: %s\n", key_aes);
-	}
+ 	}
 
 	memset(decrypted_plaintext,0,ct_len);
 	memset(decrypted_plaintext_no_pad,0,ct_len);
@@ -542,6 +565,10 @@ int main (void){
 
 	bool res = decryption_brute_force(hacked_key, plaintext, ciphertext, ct_len, decrypted_plaintext, decrypted_plaintext_no_pad, decrypted_PLAINTEXT_LENGHT, iv_aes);
 	
+	if(!strcmp((const char*)hacked_key, (const char*)key_aes)){
+		printf("Key corresponds!\n");
+	}
+
 	if(!res){
 		printf("Error during brute forcing attack\n");
 	}
