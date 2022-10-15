@@ -26,7 +26,7 @@ using namespace std;
 #define PLAINTEXT_LENGHT 445
 
 //Brute Force configuration
-#define NUM_BITS_TO_HACK 26
+#define NUM_BITS_TO_HACK 25
 #define BASE_NUMBER 2
 
 
@@ -325,7 +325,12 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 		// we assemble the key with the new character, cycle needed to order the bytes in the correct way, otherwise it will result in a swap of the
 		// cycled bytes
 		for (int j = 0; j < (NUM_BITS_TO_HACK/8) + 1; j++){
-			memcpy(&hacked_key[key_size - j - 1], &bytes_to_hack[j], 1);
+			if(NUM_BITS_TO_HACK % 8 != 0){
+				memcpy(&hacked_key[key_size - j - 1], &bytes_to_hack[j], 1);
+			}
+			else if(j < (NUM_BITS_TO_HACK/8)){
+				memcpy(&hacked_key[key_size - j -1], &bytes_to_hack[j],  1);
+			}
 		}
 
 		//If the decrypt returns an error the key is wrong for sure
