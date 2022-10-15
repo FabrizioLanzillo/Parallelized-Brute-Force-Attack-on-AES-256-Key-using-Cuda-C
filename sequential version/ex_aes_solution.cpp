@@ -26,7 +26,7 @@ using namespace std;
 #define PLAINTEXT_LENGHT 445
 
 //Brute Force configuration
-#define NUM_BITS_TO_HACK 32
+#define NUM_BITS_TO_HACK 26
 #define BASE_NUMBER 2
 
 
@@ -273,7 +273,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 	uintmax_t index = pow (BASE_NUMBER, NUM_BITS_TO_HACK);
 
 	// array containg de character of the key that has to be hacked (i.e. 20 bits = 3 Bytes)
-	unsigned char bytes_to_hack [NUM_BITS_TO_HACK/8 + 2];
+	unsigned char bytes_to_hack [NUM_BITS_TO_HACK/8 + 1];
 
 	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
 	//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
@@ -285,7 +285,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 	//Use the shift to clean up the part that we don't know of the last byte (like 4 bits in case of 20 bits to discover)
 	if(NUM_BITS_TO_HACK % 8 != 0){
 		//With 20 bits -> 2
-		bytes_to_hack[NUM_BITS_TO_HACK / 8 ] = hacked_key[NUM_BITS_TO_HACK / 8] >> rem_bits;
+		bytes_to_hack[NUM_BITS_TO_HACK / 8 ] = hacked_key[key_size - 1 - (NUM_BITS_TO_HACK / 8)] >> rem_bits;
 		tmp = bytes_to_hack[NUM_BITS_TO_HACK / 8] << rem_bits;
 	}
 
@@ -307,10 +307,11 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 		memset(plaintext,0,cipherlen);
 		memset(plaintext_no_pad,0,cipherlen);
 
-		
+		uint8_t numcycles = NUM_BITS_TO_HACK/8 + 1;
 
 		// First copy the bytes that are whole
-		for(int j=0;j < NUM_BITS_TO_HACK/8 + 1; j++){
+		for(int j=0;j <  numcycles; j++){
+			//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
 			if(NUM_BITS_TO_HACK % 8 != 0 && j == NUM_BITS_TO_HACK/8){
 				//The addition of unsigned number perform the append correctly until the value inside pointer[j] overcome the capacity of the bit to be copied, 
 				//but this will never happen since we stop the cycle before it happen
@@ -319,24 +320,28 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			}
 			ascii_character = char(i >> (8*j));
 			sprintf((char*)&bytes_to_hack[j],"%c",ascii_character);
-			//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
 		}
 
-		// we assemble the key with the new character
-		memcpy(&hacked_key[key_size - (NUM_BITS_TO_HACK/8)], bytes_to_hack, (NUM_BITS_TO_HACK/8 + 1));
+		// we assemble the key with the new character, cycle needed to order the bytes in the correct way, otherwise it will result in a swap of the
+		// cycled bytes
+		for (int j = 0; j < (NUM_BITS_TO_HACK/8) + 1; j++){
+			memcpy(&hacked_key[key_size - j - 1], &bytes_to_hack[j], 1);
+		}
 
 		//If the decrypt returns an error the key is wrong for sure
-		if(cbc_decrypt_fragment (ciphertext, cipherlen, plaintext, plainlen, hacked_key, iv) == -1){
-			//printf("--------------------------------------------------------------------------------------------------------\n");
+		int ret = cbc_decrypt_fragment(ciphertext, cipherlen, plaintext, plainlen, hacked_key, iv);
+		if(ret == -1){
 			continue;
 		}
 
-		remove_padding(cipherlen, plaintext, plaintext_no_pad);
+		if(!remove_padding(cipherlen, plaintext, plaintext_no_pad)){
+			continue;
+		}
 
 		if(!strcmp((const char*)knowed_plaintext, (const char*)plaintext_no_pad)){
 			if(DEBUG){
-				printf("DEBUG: knowed_plaintext: %s\n", knowed_plaintext);
-				printf("DEBUG: plaintext_no_pad: %s\n", plaintext_no_pad);
+				printf("DEBUG: knowed_plaintext: %s\n\n", knowed_plaintext);
+				printf("DEBUG: plaintext_no_pad: %s\n\n", plaintext_no_pad);
 			}
 			return true;
 		}
@@ -567,6 +572,9 @@ int main (void){
 	
 	if(!strcmp((const char*)hacked_key, (const char*)key_aes)){
 		printf("Key corresponds!\n");
+	}
+	else{
+		printf("Error the keys does not correspond!\n");
 	}
 
 	if(!res){
