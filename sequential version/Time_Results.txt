@@ -1,0 +1,10 @@
+Time Results on AMD Ryzen 3 2200U @ 2.50 GHz
+
+# of Bits:	Time(s):	Attempt:
+20
+22
+24		14		5.757.164
+26		96		39.311.596		
+28		435		173.529.324	
+30		433		173.529.324 (Doppio 0 nei due bit aggiuntivi)	
+32		

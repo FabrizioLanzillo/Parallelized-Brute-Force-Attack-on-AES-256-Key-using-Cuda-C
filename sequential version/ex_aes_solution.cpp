@@ -14,6 +14,7 @@
 #include <fstream>
 #include <math.h> 
 #include <sstream>
+#include <time.h>
 
 using namespace std;
 
@@ -26,7 +27,7 @@ using namespace std;
 #define PLAINTEXT_LENGHT 445
 
 //Brute Force configuration
-#define NUM_BITS_TO_HACK 25
+#define NUM_BITS_TO_HACK 34
 #define BASE_NUMBER 2
 
 
@@ -290,6 +291,8 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 	}
 
 	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+	/* START THE BRUTEFORCE - INITIATE TIME COUNTING */
+	time_t begin = time(NULL);
 
 	for(uintmax_t i = 0; i < index; i++){	//2^NUM_BITES_TO_HACK Cycles
 
@@ -348,6 +351,10 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 				printf("DEBUG: knowed_plaintext: %s\n\n", knowed_plaintext);
 				printf("DEBUG: plaintext_no_pad: %s\n\n", plaintext_no_pad);
 			}
+			time_t end = time(NULL);
+
+			printf("# of Bits: %d, # of Attempt: %ld, Elapsed_time(s): %ld\n", NUM_BITS_TO_HACK, i,(end- begin));
+
 			return true;
 		}
 		else
@@ -355,6 +362,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 		//cout<< "--------------------------------------------------------------------------------------------------------------"<<endl;
 
 	}
+
 	cout<< "**************************************************"<<endl;
 	return false;
 }
