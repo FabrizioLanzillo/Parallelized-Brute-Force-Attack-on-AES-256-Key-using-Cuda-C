@@ -27,7 +27,7 @@ using namespace std;
 #define PLAINTEXT_LENGHT 445
 
 //Brute Force configuration
-#define NUM_BITS_TO_HACK 34
+#define NUM_BITS_TO_HACK 16
 #define BASE_NUMBER 2
 
 
@@ -42,16 +42,16 @@ using namespace std;
 //Key in HEX format as global parameters
 static const int key_size = 32;
 
-const string plaintext_file = "plaintext.txt";
-const string ciphertext_file = "ciphertext.txt";
-const string key_aes_hex_file = "key_aes_hex.txt";
-const string key_aes_file = "key_aes.txt";
-const string key_wrong_file = "key_wrong.txt";
-const string key_wrong_file_hex = "key_wrong_hex.txt";
-const string iv_file_hex = "iv_hex.txt";
-const string iv_file = "iv.txt";
-const string salt_file_hex = "salt_hex.txt";
-const string salt_file = "salt.txt";
+const string plaintext_file = "text_files/plaintext.txt";
+const string ciphertext_file = "text_files/ciphertext.txt";
+const string key_aes_hex_file = "secret_files/key_aes_hex.txt";
+const string key_aes_file = "secret_files/key_aes.txt";
+//const string key_wrong_file = "key_wrong.txt";
+//const string key_wrong_file_hex = "key_wrong_hex.txt";
+const string iv_file_hex = "secret_files/iv_hex.txt";
+const string iv_file = "secret_files/iv.txt";
+const string salt_file_hex = "secret_files/salt_hex.txt";
+const string salt_file = "secret_files/salt.txt";
 
 
 //Utility function that handle encryption errors
