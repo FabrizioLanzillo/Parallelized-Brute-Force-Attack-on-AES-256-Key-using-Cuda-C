@@ -9,6 +9,5 @@ do
    ./run.exe 26 # 3 bytes and 2 bits
    ./run.exe 28 # 3 bytes and 4 bits
    ./run.exe 30 # 3 bytes and 6 bits
-   ./run.exe 32 # 4 bytes
 done
 echo "Execution finished and data saved successfully"
