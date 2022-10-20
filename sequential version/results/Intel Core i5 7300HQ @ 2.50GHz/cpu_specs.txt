@@ -1,0 +1,13 @@
+Intel Core i5 7300HQ
+	Cores	4
+	Threads	4
+	Name	Intel Core i5 7300HQ
+	Code Name	Kaby Lake
+	Technology	14nm
+	Specification	Intel Core i5-7300HQ CPU @ 2.50GHz
+	Stock Core Speed	2500 MHz
+	Caches
+		L1 Data Cache Size	4 x 32 KBytes
+		L1 Instructions Cache Size	4 x 32 KBytes
+		L2 Unified Cache Size	4 x 256 KBytes
+		L3 Unified Cache Size	6144 KBytes

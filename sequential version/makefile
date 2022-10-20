@@ -11,6 +11,6 @@ ex_aes_solution.o:
 	$(CC) $(CFLAGS) ex_aes_solution.cpp -o ex_aes_solution.o
 
 clean:
-	rm *.o run.exe secret_files/iv.txt secret_files/key_aes.txt 
+	rm *.o run.exe secret_files/iv.txt secret_files/key_aes.txt results/*.txt
 
 rebuild: clean all
