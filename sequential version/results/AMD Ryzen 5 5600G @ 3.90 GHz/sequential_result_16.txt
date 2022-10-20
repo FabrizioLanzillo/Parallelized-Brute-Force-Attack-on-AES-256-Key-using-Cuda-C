@@ -1,0 +1,10 @@
+# of Bits: 16, Elapsed Time in ms: 65
+# of Bits: 16, Elapsed Time in ms: 61
+# of Bits: 16, Elapsed Time in ms: 62
+# of Bits: 16, Elapsed Time in ms: 63
+# of Bits: 16, Elapsed Time in ms: 61
+# of Bits: 16, Elapsed Time in ms: 61
+# of Bits: 16, Elapsed Time in ms: 63
+# of Bits: 16, Elapsed Time in ms: 62
+# of Bits: 16, Elapsed Time in ms: 64
+# of Bits: 16, Elapsed Time in ms: 67

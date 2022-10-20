@@ -1,0 +1,10 @@
+# of Bits: 32, Elapsed Time in ms: 1439334
+# of Bits: 32, Elapsed Time in ms: 1433755
+# of Bits: 32, Elapsed Time in ms: 1447114
+# of Bits: 32, Elapsed Time in ms: 1434503
+# of Bits: 32, Elapsed Time in ms: 1445299
+# of Bits: 32, Elapsed Time in ms: 1435770
+# of Bits: 32, Elapsed Time in ms: 1461740
+# of Bits: 32, Elapsed Time in ms: 1448562
+# of Bits: 32, Elapsed Time in ms: 1431589
+# of Bits: 32, Elapsed Time in ms: 1452020
