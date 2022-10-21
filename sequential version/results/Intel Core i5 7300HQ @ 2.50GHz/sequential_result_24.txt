@@ -1,0 +1,10 @@
+# of Bits: 24, Elapsed Time in ms: 10933
+# of Bits: 24, Elapsed Time in ms: 10640
+# of Bits: 24, Elapsed Time in ms: 10611
+# of Bits: 24, Elapsed Time in ms: 9945
+# of Bits: 24, Elapsed Time in ms: 9995
+# of Bits: 24, Elapsed Time in ms: 9953
+# of Bits: 24, Elapsed Time in ms: 9944
+# of Bits: 24, Elapsed Time in ms: 9996
+# of Bits: 24, Elapsed Time in ms: 9975
+# of Bits: 24, Elapsed Time in ms: 10082

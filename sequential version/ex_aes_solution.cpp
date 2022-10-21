@@ -361,7 +361,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			ofstream file_out;
 
 			file_out.open(filename, std::ios_base::app);
-			file_out << "# of Bits: "<<num_bits_to_hack<<", Elapsed Time in ms: "<<elapsed.count()<< endl;
+			file_out <<elapsed.count()<< endl;
 			file_out.close();
 			cout << "Save results on file" << endl;
 

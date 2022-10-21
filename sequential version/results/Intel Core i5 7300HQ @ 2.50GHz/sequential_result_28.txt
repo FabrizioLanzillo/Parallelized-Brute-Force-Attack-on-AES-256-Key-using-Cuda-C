@@ -1,0 +1,10 @@
+# of Bits: 28, Elapsed Time in ms: 287822
+# of Bits: 28, Elapsed Time in ms: 307860
+# of Bits: 28, Elapsed Time in ms: 301221
+# of Bits: 28, Elapsed Time in ms: 286783
+# of Bits: 28, Elapsed Time in ms: 289141
+# of Bits: 28, Elapsed Time in ms: 288387
+# of Bits: 28, Elapsed Time in ms: 288082
+# of Bits: 28, Elapsed Time in ms: 286643
+# of Bits: 28, Elapsed Time in ms: 287077
+# of Bits: 28, Elapsed Time in ms: 286497

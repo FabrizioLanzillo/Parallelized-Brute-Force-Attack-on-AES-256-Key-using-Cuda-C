@@ -1,0 +1,10 @@
+# of Bits: 22, Elapsed Time in ms: 2607
+# of Bits: 22, Elapsed Time in ms: 2768
+# of Bits: 22, Elapsed Time in ms: 2771
+# of Bits: 22, Elapsed Time in ms: 2645
+# of Bits: 22, Elapsed Time in ms: 2604
+# of Bits: 22, Elapsed Time in ms: 2717
+# of Bits: 22, Elapsed Time in ms: 2613
+# of Bits: 22, Elapsed Time in ms: 2615
+# of Bits: 22, Elapsed Time in ms: 2615
+# of Bits: 22, Elapsed Time in ms: 2599
