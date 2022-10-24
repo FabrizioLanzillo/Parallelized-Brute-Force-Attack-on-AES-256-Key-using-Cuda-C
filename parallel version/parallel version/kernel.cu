@@ -42,6 +42,105 @@ static const uint8_t ConstMat[11] = {
 
 
 /** FEDE **/
+//Multiply x times
+#define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
+
+//Needed to multiply numbers in Galois-Field (2^8) 
+#define mul(x,y)                                        \
+    (((y & 1) * x) ^                                    \
+    ((y >> 1 & 1) * xtimes(x)) ^                        \
+    ((y >> 2 & 1) * xtimes(xtimes(x))) ^                \
+    ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^        \
+    ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x)))))  \
+
+/** SubBytes: Non-linear replacement of all bytes that are replaced according to a specific table
+ * unsigned char state[]: Bytes to be substituted
+ * unsigned char sbox[]: Replacement table
+*/
+__device__ void SubBytes(unsigned char state[], unsigned char sbox[]) {
+    uint8_t i, j;
+    for (i = 0; i < 4; ++i) {
+        for (j = 0; j < 4; ++j)
+            state[j * 4 + i] = sbox[state[j * 4 + i]]
+    }
+}
+
+/** Expand_Key: Perform the expansion of the key needed in AES
+ * unsigned char sbox[]: Replacement table
+ * const uint8_t* key: Original key
+ * uint8_t* rounded_key: result of the expansion
+*/
+__device__ void Expand_Key(unsigned char sbox[], const uint8_t* key, uint8_t* rounded_key) {
+    //Cycle for each 32-bit word, for the first round the key is rounded starting from the original key
+    for (unsigned i = 0; i < 8; i++)
+        for (unsigned j = 0; j < 4; j++)
+            rounded_key[(i * 4) + j] = key[(i * 4) + j];
+
+    // The other keys are derived from the previous rounding session
+    unsigned index;
+    uint8_t tmp[4];
+    for (unsigned i = 8; i < 4 * (15); i++) {
+        index = (i - 1) * 4;
+        tmp[0] = rounded_key[index + 0];
+        tmp[1] = rounded_key[index + 1];
+        tmp[2] = rounded_key[index + 2];
+        tmp[3] = rounded_key[index + 3];
+
+        if (i % 8 == 0) {
+            //Shift operation
+            const uint8_t tmp_ui8 = tmp[0];
+            tmp[0] = tmp[1];
+            tmp[1] = tmp[2];
+            tmp[2] = tmp[3];
+            tmp[3] = tmp_ui8;
+
+            //Byte substitution from sbox
+            tmp[0] = sbox[tmp[0]];
+            tmp[1] = sbox[tmp[1]];
+            tmp[2] = sbox[tmp[2]];
+            tmp[3] = sbox[tmp[3]];
+
+            tmp[0] = tmp[0] ^ ConstMat[i / 8];
+
+        }
+
+        // Extra expansion, needed only for 256 bit key
+        if (i % 8 == 4) {
+            tmp[0] = sbox[tmp[0]];
+            tmp[1] = sbox[tmp[1]];
+            tmp[2] = sbox[tmp[2]];
+            tmp[3] = sbox[tmp[3]];
+        }
+
+        unsigned j = i * 4, k = (i - 8) * 4;
+        rounded_key[j + 0] = rounded_key[k + 0] ^ tmp[0];
+        rounded_key[j + 1] = rounded_key[k + 1] ^ tmp[1];
+        rounded_key[j + 2] = rounded_key[k + 2] ^ tmp[2];
+        rounded_key[j + 3] = rounded_key[k + 3] ^ tmp[3];
+
+    }
+
+}
+
+/** MixColumns_Inv: takes the four bytes of each column and combines them using an invertible linear transformation.
+ *  Used in conjunction, ShiftRows and MixColumns ensure that the criterion of confusion and diffusion is respected
+ *
+ *  unsigned char state: Bytes to be inverted
+*/
+__device__ void MixColumns_Inv(unsigned char state[]) {
+    uint8_t vect[4];
+
+    for (uint8_t i = 0; i < 4; i++) {
+
+        for (uint8_t j = 0; j < 4; j++)
+            vect[j] = state[i][j];
+
+        state[i][0] = mul(vect[0], 0x0e) ^ mul(vect[1], 0x0b) ^ mul(vect[2], 0x0d) ^ mul(vect[3], 0x09);
+        state[i][1] = mul(vect[0], 0x09) ^ mul(vect[1], 0x0e) ^ mul(vect[2], 0x0b) ^ mul(vect[3], 0x0d);
+        state[i][2] = mul(vect[0], 0x0d) ^ mul(vect[1], 0x09) ^ mul(vect[2], 0x0e) ^ mul(vect[3], 0x0b);
+        state[i][3] = mul(vect[0], 0x0b) ^ mul(vect[1], 0x0d) ^ mul(vect[2], 0x09) ^ mul(vect[3], 0x0e);
+    }
+}
 
 /** TOMMY **/
 
