@@ -46,12 +46,12 @@ static const uint8_t ConstMat[11] = {
 #define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
 
 //Needed to multiply numbers in Galois-Field (2^8) 
-#define mul(x,y)                                        \
-    (((y & 1) * x) ^                                    \
-    ((y >> 1 & 1) * xtimes(x)) ^                        \
-    ((y >> 2 & 1) * xtimes(xtimes(x))) ^                \
-    ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^        \
-    ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x)))))  \
+#define mul(x,y)                                          \
+    ( ((y & 1) * x) ^                                     \
+    ((y >> 1 & 1) * xtimes(x)) ^                          \
+    ((y >> 2 & 1) * xtimes(xtimes(x))) ^                  \
+    ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
+    ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))) )  \
 
 /** SubBytes: Non-linear replacement of all bytes that are replaced according to a specific table
  * unsigned char state[]: Bytes to be substituted
@@ -61,7 +61,7 @@ __device__ void SubBytes(unsigned char state[], unsigned char sbox[]) {
     uint8_t i, j;
     for (i = 0; i < 4; ++i) {
         for (j = 0; j < 4; ++j)
-            state[j * 4 + i] = sbox[state[j * 4 + i]]
+            state[j * 4 + i] = sbox[state[j * 4 + i]];
     }
 }
 
@@ -127,13 +127,15 @@ __device__ void Expand_Key(unsigned char sbox[], const uint8_t* key, uint8_t* ro
  *
  *  unsigned char state: Bytes to be inverted
 */
-__device__ void MixColumns_Inv(unsigned char state[]) {
+__device__ void MixColumns_Inv(unsigned char *state[]) {
     uint8_t vect[4];
 
     for (uint8_t i = 0; i < 4; i++) {
 
-        for (uint8_t j = 0; j < 4; j++)
+        for (uint8_t j = 0; j < 4; j++){
             vect[j] = state[i][j];
+        }
+            
 
         state[i][0] = mul(vect[0], 0x0e) ^ mul(vect[1], 0x0b) ^ mul(vect[2], 0x0d) ^ mul(vect[3], 0x09);
         state[i][1] = mul(vect[0], 0x09) ^ mul(vect[1], 0x0e) ^ mul(vect[2], 0x0b) ^ mul(vect[3], 0x0d);
