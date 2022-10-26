@@ -144,6 +144,70 @@ __device__ void MixColumns_Inv(unsigned char *state[]) {
 
 /** TOMMY **/
 
+/* MixColumns: (takes the four bytes of each column and mix them)
+ * It does things
+*/
+__device__ void MixColumns(unsigned char* state[]) {
+    uint8_t tmp, t;
+    uint8_t vect[4];
+    for ( uint8_t i = 0; i < 4; ++i) {
+
+        for (uint8_t j = 0; j < 4; j++)
+            vect[j] = state[i][j];
+
+        //t = state[i][0];
+        tmp = state[i][0] ^ state[i][1] ^ state[i][2] ^ state[i][3];
+        t = state[i][0] ^ state[i][1];  t = xtimes(t);  state[i][0] ^= (t ^ tmp);
+        t = state[i][1] ^ state[i][2];  t = xtimes(t);  state[i][1] ^= (t ^ tmp);
+        t = state[i][2] ^ state[i][3];  t = xtimes(t);  state[i][2] ^= (t ^ tmp);
+        t = state[i][3] ^ state[i][0];  t = xtimes(t);  state[i][3] ^= (t ^ tmp);
+    }
+}
+/** ShiftRows: shifts the rows in the state matrix to the left
+ *  Each row unless the 1st one is moved by a different offset of columns
+*/ 
+
+__device__ void ShiftRows(unsigned char* state[]) {
+    uint8_t tmp;
+    
+    // no shift for row1
+    // 
+    // shift row2 by 1
+    tmp = state[0][1];
+    state[0][1] = state[1][1];
+    state[1][1] = state[2][1];
+    state[2][1] = state[3][1];
+    state[3][1] = tmp;
+
+    // shift row3 by 2 
+    tmp = state[0][2];
+    state[0][2] = state[2][2];
+    state[2][2] = tmp;
+    tmp = state[1][2];
+    state[1][2] = state[3][2];
+    state[3][2] = tmp;
+
+    // shift row4 by 3
+    tmp = state[0][3];
+    state[0][3] = state[3][3];
+    state[3][3] = state[2][3];
+    state[2][3] = state[1][3];
+    state[1][3] = tmp;
+}
+
+/* AddRoundKey:  Add the round key to the state matrix, using XOR operation
+*/
+
+__device__ void AddRoundKey(uint8_t round, unsigned char* state[], const uint8_t* roundKey) {
+    for (uint8_t i = 0; i < 4; ++i) {
+        for (uint8_t j = 0; j < 4; ++j) {
+            state[i][j] ^= roundKey[(round * 4 * 4) + (i * 4) + j];
+        }
+    }
+}
+
+
+
 /** FABRI **/
 
 
