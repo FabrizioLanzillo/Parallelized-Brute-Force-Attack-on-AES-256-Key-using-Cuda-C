@@ -15,7 +15,7 @@
 #include <math.h> 
 #include <sstream>
 #include <time.h>
-#include <chrono>re
+#include <chrono>
 
 using namespace std;
 
@@ -38,9 +38,6 @@ using namespace std;
 //  85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC  
 //  iv = D8596B739EFAC0460E861F9B7790F996
 //  iv =D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
-
-//Key in HEX format as global parameters
-static const int key_size = 32;
 
 const string plaintext_file = "./../files/text_files/plaintext.txt";
 const string ciphertext_file = "./../files/text_files/ciphertext.txt";
@@ -286,7 +283,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 	//Use the shift to clean up the part that we don't know of the last byte (like 4 bits in case of 20 bits to discover)
 	if(num_bits_to_hack % 8 != 0){
 		//With 20 bits -> 2
-		bytes_to_hack[num_bits_to_hack / 8 ] = hacked_key[key_size - 1 - (num_bits_to_hack / 8)] >> rem_bits;
+		bytes_to_hack[num_bits_to_hack / 8 ] = hacked_key[AES_KEYLENGTH - 1 - (num_bits_to_hack / 8)] >> rem_bits;
 		tmp = bytes_to_hack[num_bits_to_hack / 8] << rem_bits;
 	}
 
@@ -329,10 +326,10 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 		// cycled bytes
 		for (int j = 0; j < (num_bits_to_hack/8) + 1; j++){
 			if(num_bits_to_hack % 8 != 0){
-				memcpy(&hacked_key[key_size - j - 1], &bytes_to_hack[j], 1);
+				memcpy(&hacked_key[AES_KEYLENGTH - j - 1], &bytes_to_hack[j], 1);
 			}
 			else if(j < (num_bits_to_hack/8)){
-				memcpy(&hacked_key[key_size - j -1], &bytes_to_hack[j],  1);
+				memcpy(&hacked_key[AES_KEYLENGTH - j -1], &bytes_to_hack[j],  1);
 			}
 		}
 
@@ -576,9 +573,10 @@ int main (int argc, char **argv){
 	printf("Bytes to hack: %d\n", num_bits_to_hack/8);
 
 	//Copy the amount of known bits, ex. if 20 bits has to be discovered we copy all the key except the last two bytes, the last for bits will be removed using the shift later
-    unsigned char* hacked_key = (unsigned char*)malloc(key_size);
-	memset(hacked_key,0,key_size);
-	memcpy(hacked_key, key_aes, (key_size));
+    unsigned char* hacked_key = (unsigned char*)malloc(AES_KEYLENGTH);
+	memset(hacked_key,0,AES_KEYLENGTH);
+	//memcpy(hacked_key, key_aes, (AES_KEYLENGTH));
+	strcpy((char*)hacked_key, (char*)key_aes);
 
 	if(DEBUG){
 		printf("HACKED KEY: %s\n", hacked_key);
