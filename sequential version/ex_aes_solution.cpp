@@ -15,7 +15,7 @@
 #include <math.h> 
 #include <sstream>
 #include <time.h>
-#include <chrono>
+#include <chrono>re
 
 using namespace std;
 
@@ -42,16 +42,16 @@ using namespace std;
 //Key in HEX format as global parameters
 static const int key_size = 32;
 
-const string plaintext_file = "text_files/plaintext.txt";
-const string ciphertext_file = "text_files/ciphertext.txt";
-const string key_aes_hex_file = "secret_files/key_aes_hex.txt";
-const string key_aes_file = "secret_files/key_aes.txt";
+const string plaintext_file = "./../files/text_files/plaintext.txt";
+const string ciphertext_file = "./../files/text_files/ciphertext.txt";
+const string key_aes_hex_file = "./../files/secret_files/key_aes_hex.txt";
+const string key_aes_file = "./../files/secret_files/key_aes.txt";
 //const string key_wrong_file = "key_wrong.txt";
 //const string key_wrong_file_hex = "key_wrong_hex.txt";
-const string iv_file_hex = "secret_files/iv_hex.txt";
-const string iv_file = "secret_files/iv.txt";
-const string salt_file_hex = "secret_files/salt_hex.txt";
-const string salt_file = "secret_files/salt.txt";
+const string iv_file_hex = "./../files/secret_files/iv_hex.txt";
+const string iv_file = "./../files/secret_files/iv.txt";
+const string salt_file_hex = "./../files/secret_files/salt_hex.txt";
+const string salt_file = "./../files/secret_files/salt.txt";
 
 
 //Utility function that handle encryption errors
@@ -356,8 +356,8 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 
 			printf("# of Bits: %d, # of Attempt: %ld, Elapsed Time in ms: %ld\n", num_bits_to_hack, i, elapsed.count());
 
-			char filename[32] = "sequential_result";
-			sprintf(filename, "results/sequential_result_%d.txt", num_bits_to_hack);
+			char filename[62] = "sequential_result";
+			sprintf(filename, "results/sequential_execution/sequential_result_%d.txt", num_bits_to_hack);
 			ofstream file_out;
 
 			file_out.open(filename, std::ios_base::app);
