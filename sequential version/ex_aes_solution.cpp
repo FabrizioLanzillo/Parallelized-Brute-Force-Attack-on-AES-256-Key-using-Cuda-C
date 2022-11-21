@@ -354,7 +354,7 @@ bool decryption_brute_force(unsigned char*& hacked_key, unsigned char* knowed_pl
 			printf("# of Bits: %d, # of Attempt: %ld, Elapsed Time in ms: %ld\n", num_bits_to_hack, i, elapsed.count());
 
 			char filename[62] = "sequential_result";
-			sprintf(filename, "results/sequential_execution/sequential_result_%d.txt", num_bits_to_hack);
+			sprintf(filename, "results/sequential_result_%d.txt", num_bits_to_hack);
 			ofstream file_out;
 
 			file_out.open(filename, std::ios_base::app);
