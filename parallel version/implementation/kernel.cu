@@ -1,13 +1,12 @@
-#include <curand_kernel.h>
-#include <curand.h>
 #include <device_launch_parameters.h>
 #include <stdio.h>
 #include <fstream>
 #include <cstring>
 #include <string.h>
-#include <sstream>  
+#include <sstream>
 #include <cuda.h>
 #include <stdint.h>
+#include <cuda_runtime_api.h>
 
 using namespace std;
 
@@ -51,14 +50,8 @@ struct AES_ctx
 //const int num_bits_to_hack = 12;
 const string plaintext_file = "./../../files/text_files/plaintext.txt";
 const string ciphertext_file = "./../../files/text_files/ciphertext.txt";
-const string key_aes_hex_file = "./../../files/secret_files/key_aes_hex.txt";
 const string key_aes_file = "./../../files/secret_files/key_aes.txt";
-//const string key_wrong_file = "key_wrong.txt";
-//const string key_wrong_file_hex = "key_wrong_hex.txt";
-const string iv_file_hex = "./../../files/secret_files/iv_hex.txt";
 const string iv_file = "./../../files/secret_files/iv.txt";
-const string salt_file_hex = "./../../files/secret_files/salt_hex.txt";
-const string salt_file = "./../../files/secret_files/salt.txt";
 
 /*****************************************************************************/
 /* Private variables:                                                        */
@@ -353,7 +346,6 @@ __global__ void AES_CBC_decrypt_buffer(struct AES_ctx* ctx, unsigned char* ct,un
 {
 	size_t i;
 	uint8_t storeNextIv[BLOCK_SIZE];
-	printf("CIAO\n");
 	for (i = 0; i < length; i += BLOCK_SIZE)
 	{
 		memcpy(storeNextIv, ct, BLOCK_SIZE);
@@ -361,7 +353,6 @@ __global__ void AES_CBC_decrypt_buffer(struct AES_ctx* ctx, unsigned char* ct,un
 		XorWithIv(ct, ctx->Iv);
 		memcpy(ctx->Iv, storeNextIv, BLOCK_SIZE);
 		ct += BLOCK_SIZE;
-		printf("CIAO\n");
 	}
 
 	printf("%s\n", ct);
@@ -393,47 +384,41 @@ __host__ string read_data_from_file(string file){
 	return file_contents;
 }
 
-/** Function that perform a conversion from Hexadecimal number into their ASCII representation
- * hex: string that contains the Hexadecimal rapresentation of the text 
- */
-__host__ string hexToASCII(string hex){
-
-    // initialize the ASCII code string as empty.
-    string ascii = "";
-    for (size_t i = 0; i < hex.length(); i += 2)
-    {
-        // extract two characters from hex string
-        string part = hex.substr(i, 2);
- 
-        // change it into base 16 and
-        // typecast as the character
-        char ch = stoul(part, nullptr, 16);
-        // add this char to final ASCII string
-        ascii += ch;
-    }
-    return ascii;
-}
-
-/** Perform a convertion of the key from exadecimal to ASCII and save it on another file
- * file_to_read: file on which we read the exadecimal format key
- * file_to_save: file on which we save the converted key
- */
-__host__ void convert_key(string file_to_read, string file_to_save){
-	string str = read_data_from_file(file_to_read);
-	ofstream SaveFile(file_to_save, ios::out | ios::binary);
-	SaveFile << hexToASCII(str);
-	SaveFile.close();
-
-}
-
 
 int main (int argc, char **argv){
 	
 	/* ------------------------------------- GET KEY -------------------------------------------------------- */
 	printf("------------------------------------- GET KEY --------------------------------------------------------\n");
-	
-	convert_key(iv_file_hex, iv_file);
-	convert_key(key_aes_hex_file, key_aes_file);
+	unsigned char* d_key_aes, * d_iv_aes, * d_ciphertext, * d_plaintext;
+
+	int size_1 = sizeof(unsigned char) * AES_KEYLENGTH;
+	cudaError_t rc = cudaMalloc((void**)&d_key_aes, size_1);
+	if (rc != cudaSuccess) {
+		printf("Errore durante allocazione: 1!\n");
+		return -1;
+	}
+
+	int size_2 = sizeof(unsigned char) * IV_KEYLENGTH;
+	rc = cudaMalloc((void**)&d_iv_aes, size_2);
+	if (rc != cudaSuccess) {
+		printf("Errore durante allocazione: 2!\n");
+		return -1;
+	}
+
+	int size_3 = sizeof(unsigned char) * 445;
+	rc = cudaMalloc((void**)&d_plaintext, size_3);
+	if (rc != cudaSuccess) {
+		printf("Errore durante allocazione: 3!\n");
+		return -1;
+	}
+
+	int size_4 = sizeof(unsigned char) * 448;
+	rc = cudaMalloc((void**)&d_ciphertext, size_4);
+	if (rc != cudaSuccess) {
+		printf("Errore durante allocazione: 4!\n");
+		return -1;
+	}
+
 	unsigned char* iv_aes = (unsigned char*)malloc(IV_KEYLENGTH);
 	if(!iv_aes){
 		printf ("ERROR: iv space allocation went wrong\n");
@@ -445,7 +430,6 @@ int main (int argc, char **argv){
 		printf ("IV: %s\n", iv_aes);
 	}
 
-	
 	unsigned char* key_aes = (unsigned char*)malloc(AES_KEYLENGTH);
 	if(!key_aes){
         printf ("ERROR: key space allocation went wrong\n");
@@ -499,47 +483,30 @@ int main (int argc, char **argv){
 	printf("---------------------------------------- DEC ----------------------------------------------------------\n");
 
 	//"d_" variables are the device ones
-	struct AES_ctx d_ctx;
-	unsigned char* d_key_aes, *d_iv_aes, *d_ciphertext, *d_plaintext;
 
+	printf("CIAO\n");
 	//Allocation of variables needed for decryption
-	cudaError_t rc = cudaMalloc((void**)&d_ctx,sizeof(AES_ctx));
+	/*rc = cudaMalloc((void**)&d_ctx, sizeof(AES_ctx));
 	if (rc != cudaSuccess) {
 		printf("Errore durante allocazione: 1!\n");
 		return -1;
-	}
-	rc = cudaMalloc((void**)&d_key_aes, AES_KEYLENGTH);
-	if (rc != cudaSuccess) {
-		printf("Errore durante allocazione: 2!\n");
-		return -1;
-	}
-	rc = cudaMalloc((void**)&d_iv_aes, IV_KEYLENGTH);
-	if (rc != cudaSuccess) {
-		printf("Errore durante allocazione: 3!\n");
-		return -1;
-	}
-	rc = cudaMalloc((void**)&d_plaintext, 445);
-	if (rc != cudaSuccess) {
-		printf("Errore durante allocazione: 4!\n");
-		return -1;
-	}
-	rc = cudaMalloc((void**)&d_ciphertext, 448);
-	if (rc != cudaSuccess) {
-		printf("Errore durante allocazione: 5!\n");
-		return -1;
-	}
-	printf("CIAO\n");
+	}*/
 	//Copy the variables value on GPU dynamic memory
-	cudaMemcpy(d_key_aes, &key_aes, AES_KEYLENGTH, cudaMemcpyHostToDevice);
+	/*cudaMemcpy(d_key_aes, &key_aes, AES_KEYLENGTH, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_iv_aes, &iv_aes, IV_KEYLENGTH, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_plaintext, &plaintext, 445, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_ciphertext, &ciphertext, 448, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_ciphertext, &ciphertext, 448, cudaMemcpyHostToDevice);*/
 	printf("CIAO\n");
 	//Set the ciphertext context
-	AES_init_ctx_iv(&d_ctx, d_key_aes, (uint8_t*)d_iv_aes);
+	/*AES_init_ctx_iv(&d_ctx, d_key_aes, (uint8_t*)d_iv_aes);
 	printf("CIAO\n");
 
-	AES_CBC_decrypt_buffer<<<1,1>>>(&d_ctx, d_ciphertext, d_plaintext, 448);
+	AES_CBC_decrypt_buffer<<<1,1>>>(&d_ctx, d_ciphertext, d_plaintext, 448);*/
+
+	cudaFree(d_key_aes);
+	cudaFree(d_iv_aes);
+	cudaFree(d_ciphertext);
+	cudaFree(d_plaintext);
 
 	return 0;
 
