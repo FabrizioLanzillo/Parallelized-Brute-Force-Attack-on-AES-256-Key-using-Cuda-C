@@ -456,6 +456,8 @@ int main (int argc, char **argv){
 	/* ------------------------------------------ DEC ------------------------------------------------------------ */
 	printf("---------------------------------------- DEC ----------------------------------------------------------\n");
 
+	printf("-- ------- Allocation on GPU side ------- --");
+
 	int size_1 = sizeof(unsigned char) * AES_KEYLENGTH;
 	cudaError_t rc = cudaMalloc((void**)&d_key_aes, size_1);
 	if (rc != cudaSuccess) {
@@ -484,22 +486,32 @@ int main (int argc, char **argv){
 		return -1;
 	}
 
+	printf("\t\t\t -> Completed\n");
+
+	printf("-- ------- Initialize variables on GPU side ------- --");
+
 	//Copy the variables value on GPU dynamic memory
-	/*cudaMemcpy(d_key_aes, &key_aes, AES_KEYLENGTH, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_key_aes, &key_aes, AES_KEYLENGTH, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_iv_aes, &iv_aes, IV_KEYLENGTH, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_plaintext, &plaintext, 445, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_ciphertext, &ciphertext, 448, cudaMemcpyHostToDevice);*/
-	printf("CIAO\n");
-	//Set the ciphertext context
-	/*AES_init_ctx_iv(&d_ctx, d_key_aes, (uint8_t*)d_iv_aes);
-	printf("CIAO\n");
+	cudaMemcpy(d_ciphertext, &ciphertext, 448, cudaMemcpyHostToDevice);
 
-	AES_CBC_decrypt_buffer<<<1,1>>>(&d_ctx, d_ciphertext, d_plaintext, 448);*/
+	printf("\t\t\t -> Completed \n");
+
+
+	//Set the ciphertext context
+	/*AES_CBC_decrypt_buffer<<<1,1>>>(&d_ctx, d_ciphertext, d_plaintext, 448);*/
+
+	printf("-- ------- Free GPU memory ------- --");
+
 
 	cudaFree(d_key_aes);
 	cudaFree(d_iv_aes);
 	cudaFree(d_ciphertext);
 	cudaFree(d_plaintext);
+
+	printf("\t\t\t -> Completed \n");
+
 
 	return 0;
 
