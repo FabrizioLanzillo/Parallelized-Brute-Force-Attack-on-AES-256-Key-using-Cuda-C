@@ -7,6 +7,7 @@
 #include <cuda.h>
 #include <stdint.h>
 #include <cuda_runtime_api.h>
+#include <string.h>
 
 using namespace std;
 
@@ -365,23 +366,21 @@ __global__ void AES_CBC_decrypt_buffer(struct AES_ctx* ctx, unsigned char* ct,un
 /** Perfrom a read from a file
  * file: name of the file to read
  */
-__host__ string read_data_from_file(string file){
+__host__ void* read_data_from_file(string file, uint64_t size){
+	unsigned char* file_contents;
+	char* memblock;
 
-	fstream getFile;
-	string str;
-	string file_contents;
-	getFile.open(file,ios::in | ios::binary);
-
-	while (getline(getFile, str)){
-		file_contents += str;
-		file_contents.push_back('\n');
-	} 
-
-	file_contents.pop_back();
-	
-	getFile.close();
-	
+	ifstream of(file, ios::in | ios::binary | ios::ate);
+	if (of.is_open())
+	{
+		file_contents = (unsigned char*)malloc(size);
+		of.seekg(0, ios::beg);
+		of.read((char*)file_contents, size);
+		of.close();
+	}
+	printf("%s\n", file_contents);
 	return file_contents;
+
 }
 
 
@@ -389,7 +388,73 @@ int main (int argc, char **argv){
 	
 	/* ------------------------------------- GET KEY -------------------------------------------------------- */
 	printf("------------------------------------- GET KEY --------------------------------------------------------\n");
+	//"d_" variables are the device ones
 	unsigned char* d_key_aes, * d_iv_aes, * d_ciphertext, * d_plaintext;
+
+	unsigned char* iv_aes = (unsigned char*)malloc(IV_KEYLENGTH);
+	if(!iv_aes){
+		printf ("ERROR: iv space allocation went wrong\n");
+		return -1;
+	}
+	memset(iv_aes, 0, IV_KEYLENGTH);
+	memcpy((void*)iv_aes, read_data_from_file(iv_file, 16) , IV_KEYLENGTH);
+	printf("Ciao\n");
+	if(DEBUG){
+		printf ("IV: %s\n", iv_aes);
+	}
+	
+	unsigned char* key_aes = (unsigned char*)malloc(AES_KEYLENGTH);
+	if(!key_aes){
+        printf ("ERROR: key space allocation went wrong\n");
+		return -1;
+	}
+	memset(key_aes,0,AES_KEYLENGTH);
+	strcpy((char*)key_aes, (char*)read_data_from_file(key_aes_file, 32));
+	if(DEBUG){
+        printf ("KEY TO ENCRYPT: %s With length: %lu\n", key_aes, (uint32_t)strlen((char*)key_aes));
+	}
+
+    printf("------------------------------------------------------------------------------------------------------\n");
+	/* ------------------------------------- GET PT -------------------------------------------------------- */
+	printf("------------------------------------- GET PT ---------------------------------------------------------\n");
+
+
+
+	//Allocating pt space
+	unsigned char* plaintext = (unsigned char*)malloc(PLAINTEXT_LENGHT);
+	if(!plaintext){
+		printf ("ERROR: plaintext space allocation went wrong\n");
+		return -1;
+	}
+	memset(plaintext,0,PLAINTEXT_LENGHT);
+	strcpy((char*)plaintext, (char*)read_data_from_file(plaintext_file, 445));
+
+	if(DEBUG){
+		printf("DEBUG: The Plaintext is: %s\n", plaintext);
+	}
+
+	printf("------------------------------------------------------------------------------------------------------\n");
+	/* ------------------------------------- GET CT -------------------------------------------------------- */
+	printf("------------------------------------- GET CT ---------------------------------------------------------\n");
+
+	//Allocating ct space
+
+	const uint32_t CT_LEN = PLAINTEXT_LENGHT + 3;
+	unsigned char* ciphertext = (unsigned char*)malloc(CT_LEN);
+	if (!ciphertext) {
+		printf("ERROR: CT space allocation went wrong\n");
+		return -1;
+	}
+	memset(ciphertext, 0, CT_LEN);
+	strcpy((char*)ciphertext, (char*)read_data_from_file(ciphertext_file, 448));
+
+	if (DEBUG) {
+		printf("DEBUG: The Ciphertext is: %s\n", ciphertext);
+	}
+
+	printf("------------------------------------------------------------------------------------------------------\n");
+	/* ------------------------------------------ DEC ------------------------------------------------------------ */
+	printf("---------------------------------------- DEC ----------------------------------------------------------\n");
 
 	int size_1 = sizeof(unsigned char) * AES_KEYLENGTH;
 	cudaError_t rc = cudaMalloc((void**)&d_key_aes, size_1);
@@ -419,78 +484,6 @@ int main (int argc, char **argv){
 		return -1;
 	}
 
-	unsigned char* iv_aes = (unsigned char*)malloc(IV_KEYLENGTH);
-	if(!iv_aes){
-		printf ("ERROR: iv space allocation went wrong\n");
-		return -1;
-	}
-	memset(iv_aes, 0, IV_KEYLENGTH);
-	strcpy((char*)iv_aes, (char*)read_data_from_file(iv_file).c_str());
-	if(DEBUG){
-		printf ("IV: %s\n", iv_aes);
-	}
-
-	unsigned char* key_aes = (unsigned char*)malloc(AES_KEYLENGTH);
-	if(!key_aes){
-        printf ("ERROR: key space allocation went wrong\n");
-		return -1;
-	}
-	memset(key_aes,0,AES_KEYLENGTH);
-	strcpy((char*)key_aes, (char*)read_data_from_file(key_aes_file).c_str());
-	if(DEBUG){
-        printf ("KEY TO ENCRYPT: %s With length: %lu\n", key_aes, (uint32_t)strlen((char*)key_aes));
-	}
-
-    printf("------------------------------------------------------------------------------------------------------\n");
-	/* ------------------------------------- GET PT -------------------------------------------------------- */
-	printf("------------------------------------- GET PT ---------------------------------------------------------\n");
-
-
-
-	//Allocating pt space
-	unsigned char* plaintext = (unsigned char*)malloc(PLAINTEXT_LENGHT);
-	if(!plaintext){
-		printf ("ERROR: plaintext space allocation went wrong\n");
-		return -1;
-	}
-	memset(plaintext,0,PLAINTEXT_LENGHT);
-	strcpy((char*)plaintext, (char*)read_data_from_file(plaintext_file).c_str());
-
-	if(DEBUG){
-		printf("DEBUG: The Plaintext is: %s\n", plaintext);
-	}
-
-	printf("------------------------------------------------------------------------------------------------------\n");
-	/* ------------------------------------- GET CT -------------------------------------------------------- */
-	printf("------------------------------------- GET CT ---------------------------------------------------------\n");
-
-	//Allocating ct space
-	const uint32_t CT_LEN = PLAINTEXT_LENGHT + 3;
-	unsigned char* ciphertext = (unsigned char*)malloc(CT_LEN);
-	if (!ciphertext) {
-		printf("ERROR: CT space allocation went wrong\n");
-		return -1;
-	}
-	memset(ciphertext, 0, CT_LEN);
-	strcpy((char*)ciphertext, (char*)read_data_from_file(ciphertext_file).c_str());
-
-	if (DEBUG) {
-		printf("DEBUG: The Ciphertext is: %s\n", ciphertext);
-	}
-
-	printf("------------------------------------------------------------------------------------------------------\n");
-	/* ------------------------------------------ DEC ------------------------------------------------------------ */
-	printf("---------------------------------------- DEC ----------------------------------------------------------\n");
-
-	//"d_" variables are the device ones
-
-	printf("CIAO\n");
-	//Allocation of variables needed for decryption
-	/*rc = cudaMalloc((void**)&d_ctx, sizeof(AES_ctx));
-	if (rc != cudaSuccess) {
-		printf("Errore durante allocazione: 1!\n");
-		return -1;
-	}*/
 	//Copy the variables value on GPU dynamic memory
 	/*cudaMemcpy(d_key_aes, &key_aes, AES_KEYLENGTH, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_iv_aes, &iv_aes, IV_KEYLENGTH, cudaMemcpyHostToDevice);
