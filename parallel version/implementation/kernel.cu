@@ -28,7 +28,7 @@ using namespace std;
     ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
     ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
 
-static const uint8_t AES_inverse_Sbox[256] ={
+__device__ uint8_t AES_inverse_Sbox[256] ={
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
   0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -47,7 +47,18 @@ static const uint8_t AES_inverse_Sbox[256] ={
   0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d 
 };
 
-uint8_t state_round_matrix[4][4];
+struct AES_round_secret{
+
+    unsigned char round_key[AES_KEY_EXPANDED_BYTES_LENGTH];
+    unsigned char round_iv[IV_BYTES_LENGTH];
+};
+
+__device__ void initialize_AES_round_secret(uint8_t* inverse_sbox, struct AES_round_secret* rs, unsigned char* key, unsigned char* iv){
+  
+    expand_key_decryption(inverse_sbox, rs->round_key, key);
+    memcpy (rs->round_iv, iv, IV_BYTES_LENGTH); 
+}
+
 
 // 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
 uint8_t key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17,
@@ -55,11 +66,6 @@ uint8_t key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 
 
 // D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
 uint8_t iv[IV_BYTES_LENGTH] = { 0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96};
-
-
-uint8_t round_key[AES_KEY_EXPANDED_BYTES_LENGTH];
-
-uint8_t round_iv[IV_BYTES_LENGTH];
 
 
 //Constant matrix
@@ -202,21 +208,6 @@ __device__ void add_round_key(uint8_t round, uint8_t *state[], const uint8_t* ro
     }
 }
 
-// function that is called by the device
-void initialize_AES_secret_data(const uint8_t* AES_inverse_Sbox, uint8_t* round_key, uint8_t* round_iv, uint8_t* key, uint8_t* iv) {
-
-    expand_key_decryption(AES_inverse_Sbox, key, round_key);
-    memcpy(round_iv, iv, IV_BYTES_LENGTH);
-
-}
-
-// function that is called by the device
-void initialize_AES_secret_data(const uint8_t* AES_inverse_Sbox, uint8_t* round_key, uint8_t* round_iv,  uint8_t* key) {
-
-    expand_key_decryption(AES_inverse_Sbox, key, round_key);
-
-}
-
 
 // TODO:
 //  creare una funzione __host__ __device__ per decifrare il cipher
@@ -246,11 +237,11 @@ __device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix
 
 //  creare una funzione che viene invocata dal kernel __global__ per decrifrare il cipher che chiama la funzione sopra
 // in cui gestiamo x 
-__global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, uint8_t* round_key, uint8_t* round_iv, uint8_t* device_chipertext, size_t message_num_block){
+__global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, struct AES_round_secret *rs , uint8_t* device_chipertext, size_t message_num_block){
 
     int x = threadIdx.x + blockDim.x * blockIdx.x;
     if(x < message_num_block){
-        decryption(device_inverse_sbox, (unsigned char**)device_chipertext + x, round_key);
+        decryption(device_inverse_sbox, (unsigned char**)device_chipertext + x, rs->round_key);
     }
 }
 
@@ -271,6 +262,12 @@ int main() {
 
     uint8_t* buf;
 
+    struct AES_round_secret AES_rs;
+
+    struct AES_round_secret *device_AES_rs;
+
+    initialize_AES_round_secret(AES_inverse_Sbox, &AES_rs, key, iv);
+
     // declaration of the device variable
     uint8_t* device_chipertext;
     uint8_t* device_inverse_sbox;
@@ -280,17 +277,15 @@ int main() {
 
     // allocate device memory
     cudaMalloc((void**)&device_chipertext, sizeof(uint8_t) * CHIPHERTEXT_LENGTH);
-    cudaMalloc((void**)&device_round_key, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH);
-    cudaMalloc((void**)&device_round_iv, sizeof(uint8_t) * IV_BYTES_LENGTH);
     cudaMalloc((void**)&device_inverse_sbox, sizeof(uint8_t) * 256);
+    cudaMalloc((void**)&device_AES_rs, sizeof(struct AES_round_secret));
     // host send data: host => device
 
     // TODO
     // host send data: host => device
     cudaMemcpy(device_chipertext, buf, sizeof(uint8_t) * CHIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
-    cudaMemcpy(device_round_key, device_round_key, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH, cudaMemcpyHostToDevice);
-    cudaMemcpy(device_round_iv, device_round_iv, sizeof(uint8_t) * IV_BYTES_LENGTH, cudaMemcpyHostToDevice);
     cudaMemcpy(device_inverse_sbox, AES_inverse_Sbox, sizeof(uint8_t) * 256, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_AES_rs, &AES_rs, sizeof(struct AES_round_secret), cudaMemcpyHostToDevice);
 
     // AES_BLOCKLEN = 16
     // si calcolano i blocchi totali del messaggio 
@@ -300,7 +295,7 @@ int main() {
     // qui si sta trovando il numero dei blocchi ma non so bene che sta facendo 
     size_t device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block;
 
-    kernel_decrypt <<<device_setted_block_number, thread_per_block>>> (device_inverse_sbox, device_round_key, device_round_iv, device_chipertext, message_num_block);
+    kernel_decrypt <<<device_setted_block_number, thread_per_block>>> (device_inverse_sbox, device_AES_rs, device_chipertext, message_num_block);
     // host receive data: device => host
     cudaMemcpy(buf, device_chipertext, sizeof(uint8_t) * CHIPHERTEXT_LENGTH, cudaMemcpyDeviceToHost);
     // release device memory
