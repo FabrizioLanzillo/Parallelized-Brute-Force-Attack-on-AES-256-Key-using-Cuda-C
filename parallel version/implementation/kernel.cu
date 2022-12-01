@@ -35,10 +35,13 @@ using namespace std;
     ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
 
 const string plaintext_file = "./../../files/text_files/plaintext.txt";
-const string ciphertext_file = "./../../files/text_files/ciphertext.txt";
-const string key_aes_file = "./../../files/secret_files/key_aes.txt";
-const string iv_file = "./../../files/secret_files/iv.txt";
 
+/*********************************************** DATA STRUCTURES **************************************************/
+
+/**
+ * The inverted S-box is s S-box performed in reverse necessary for the decryption of the aes
+ * 
+ */
 __device__ uint8_t AES_inverse_Sbox[256] ={
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -60,20 +63,48 @@ __device__ uint8_t AES_inverse_Sbox[256] ={
 
 //Constant matrix
 //const_mat[i] contains the value given by the power of x (i-1), the power of x in the field GF(2^8) (x is represented as {02})
-__device__ __host__ const uint8_t const_mat[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+__device__  const uint8_t const_mat[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+
+/**
+ * simmetric key for aes decryption
+ * 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
+ * 
+ */
+__device__ unsigned char key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17,
+                    0xd4, 0x18, 0xa5, 0x5a, 0x2c, 0xfd, 0x07, 0x7d, 0x12, 0x15, 0xed, 0x25, 0x1c, 0x4a, 0x57, 0xd8, 0xec};
+
+/**
+ * IV for aes decryption
+ * D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
+ * 
+ */
+__device__ unsigned char iv[IV_BYTES_LENGTH] = { 0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96};
 
 
+/**
+ * struct that cointains the key and the iv for each round, since we use aes cbc, 
+ * starting from the decryption of the second ciphertext block 
+ * the value of iv is replaced with the ciphertext of the previous block 
+ * when we decrypt the current block 
+ * 
+ */
  struct AES_round_secret{
 
-    unsigned char round_key[AES_KEY_EXPANDED_BYTES_LENGTH];
+    unsigned char expanded_key[AES_KEY_EXPANDED_BYTES_LENGTH];
     unsigned char round_iv[IV_BYTES_LENGTH];
 };
 
-/** Expand_Key: Perform the expansion of the key needed in AES
- * unsigned char sbox[]: Replacement table
- * const uint8_t* key: Original key
- * uint8_t* rounded_key: result of the expansion
-*/
+/******************************************** UTILITY DEVICE FUNCTION *********************************************/
+
+/**
+ * function that expand the key from the simmetric aes key of 256 bit 
+ * the key now is 240 byte long
+ * 
+ * @param AES_inverse_Sbox is the inverse sbox
+ * @param key is the simmetric aes key
+ * @param rounded_key is the key for the initial round, after the expansion
+ * 
+ */
 __device__ __host__ void expand_key_decryption(const uint8_t AES_inverse_Sbox[], const uint8_t* key, uint8_t* rounded_key) {
     //Cycle for each 32-bit word, for the first round the key is rounded starting from the original key
     for (unsigned i = 0; i < 8; i++)
@@ -127,29 +158,32 @@ __device__ __host__ void expand_key_decryption(const uint8_t AES_inverse_Sbox[],
 }
 
 
+/**
+ * this function initialize the struct AES_round_secret that contains the key and the iv for each round
+ * 
+ * @param inverse_sbox is the inverse sbox
+ * @param rs is the pointer to the struct
+ * @param key is the simmetric aes key
+ * @param iv is the iv for the aes-cbc
+ */
 __device__ AES_round_secret * initialize_AES_round_secret(uint8_t* inverse_sbox, struct AES_round_secret* rs, unsigned char* key, unsigned char* iv){
   
-    expand_key_decryption(inverse_sbox, rs->round_key, key);
+    expand_key_decryption(inverse_sbox, rs->expanded_key, key);
     memcpy (rs->round_iv, iv, IV_BYTES_LENGTH); 
 
     return rs;
 }
 
+/***************************************** PHASE OPERATION AES DECRYPTION *****************************************/
 
-// 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
-__device__ unsigned char key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17,
-                    0xd4, 0x18, 0xa5, 0x5a, 0x2c, 0xfd, 0x07, 0x7d, 0x12, 0x15, 0xed, 0x25, 0x1c, 0x4a, 0x57, 0xd8, 0xec};
-
-// D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
-__device__ unsigned char iv[IV_BYTES_LENGTH] = { 0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96};
-
-
-
-
-/** SubBytes: Non-linear replacement of all bytes that are replaced according to a specific table
- * unsigned char state[]: Bytes to be substituted
- * unsigned char sbox[]: Replacement table
-*/
+/**
+ * Non-linear operation that replace where evry byte of the state matrix is replaced 
+ * using the Inverse S-Box
+ * 
+ * @param state state matrix which element are trasnformed through all the phases
+ * @param AES_inverse_Sbox inverse S-box for the non-linear trasformation
+ * 
+ */
 __device__  void sub_bytes_decryption(uint8_t* state, const uint8_t AES_inverse_Sbox[]) {
     
     unsigned int i, j;
@@ -163,11 +197,12 @@ __device__  void sub_bytes_decryption(uint8_t* state, const uint8_t AES_inverse_
 }
 
 
-/** MixColumns_Inv: takes the four bytes of each column and combines them using an invertible linear transformation.
- *  Used in conjunction, ShiftRows and MixColumns ensure that the criterion of confusion and diffusion is respected
- *
- *  unsigned char state: Bytes to be inverted
-*/
+/**
+ * in this function the four bytes of a column are combined using an invertible linear transformation
+ * this function with inv_shift_rows_decryption ensure the confusion and diffusion criterion
+ * 
+ * @param state is the state matrix
+ */
 __device__ void inv_mix_columns_decryption(uint8_t* state) {
     uint8_t vect[4];
 
@@ -186,9 +221,12 @@ __device__ void inv_mix_columns_decryption(uint8_t* state) {
 }
 
 
-/** ShiftRows: shifts the rows in the state matrix to the left
- *  Each row unless the 1st one is moved by a different offset of columns
-*/ 
+/**
+ * shifts the rows in the state matrix to the left according to the number of the relative row
+ * this function with inv_mix_columns_decryption ensure the confusion and diffusion criterion
+ * 
+ * @param state is the state matrix
+ */
 __device__ void inv_shift_rows_decryption(uint8_t* state) {
     uint8_t tmp;
     
@@ -215,24 +253,33 @@ __device__ void inv_shift_rows_decryption(uint8_t* state) {
     state[3 * 4 + 3] = tmp;
 }
 
-/* AddRoundKey:  Add the round key to the state matrix, using XOR operation
-*/
-__device__ void add_round_key(uint8_t round, uint8_t *state, const uint8_t* roundKey) {
+
+/**
+ * every byte of the state matrix is put in xor with the byte of the local key, taken from the expanded key
+ * every local key is generated from the expanded key, in particular every local key is 16 byte long
+ * and the add_round_key function is called 15 times.
+ * 
+ * @param round number of the current round
+ * @param state is the state matrix
+ * @param expanded_key is the the expanded key
+ */
+__device__ void add_round_key(uint8_t round, uint8_t *state, const uint8_t* expanded_key) {
     for (uint8_t i = 0; i < 4; ++i) {
         for (uint8_t j = 0; j < 4; ++j) {
-            state[i * 4 + j] ^= roundKey[(round * 4 * 4) + (i * 4) + j];
+            state[i * 4 + j] ^= expanded_key[(round * 4 * 4) + (i * 4) + j];
         }
     }
 }
 
-/*__device__ void create_state_matrix(unsigned char *ciphertext){
-    for(int i = 0; i < 4; i++){
-        for(int j = 0; j < 4; j++){
-            state_matrix[i][j] = ciphertext[i * 4 + j];
-        }
-    }
-}*/
+/****************************************** CBC OPERATION FOR DECRYPTION ******************************************/
 
+/**
+ * this function put in xor the byte of the iv with the block decrypted after all the aes decryption phases 
+ * the iv for the first block is the aes iv, and then after the first block is the previous ciphertext block
+ * 
+ * @param state_matrix is the state matrix is the result of the aes encryption algorithm after all the phases
+ * @param iv is long 16 bytes and is put in xor with the state matrix
+ */
 __device__ void xor_with_iv(uint8_t* state_matrix, uint8_t* iv) {
     uint8_t i,j;
     for (i = 0; i < 4; ++i) { // The block in AES is always 128bit no matter the key size
@@ -241,14 +288,14 @@ __device__ void xor_with_iv(uint8_t* state_matrix, uint8_t* iv) {
     }
 }
 
-// TODO:
-//  creare una funzione __host__ __device__ per decifrare il cipher
+/******************************************* PARALLEL DEVICE DECRYPTION ******************************************/
+
 __device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix, struct AES_round_secret *rs) {
 
     uint8_t current_round = NUMBER_OF_ROUNDS;
 
     // Add the initial key to the state matrix before the first round of decryption
-    add_round_key(NUMBER_OF_ROUNDS, state_matrix, rs->round_key);
+    add_round_key(NUMBER_OF_ROUNDS, state_matrix, rs->expanded_key);
 
     current_round--;
 
@@ -257,19 +304,17 @@ __device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix
 
         inv_shift_rows_decryption(state_matrix);
         sub_bytes_decryption(state_matrix, AES_inverse_Sbox);
-        add_round_key(current_round, state_matrix, rs->round_key);
+        add_round_key(current_round, state_matrix, rs->expanded_key);
         inv_mix_columns_decryption(state_matrix);
     }
 
     inv_shift_rows_decryption(state_matrix);
     sub_bytes_decryption(state_matrix, AES_inverse_Sbox);
-    add_round_key(current_round, state_matrix, rs->round_key);
+    add_round_key(current_round, state_matrix, rs->expanded_key);
     xor_with_iv(state_matrix, rs->round_iv);
     
 }
 
-//  creare una funzione che viene invocata dal kernel __global__ per decrifrare il cipher che chiama la funzione sopra
-// in cui gestiamo x 
 __global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, uint8_t* device_chipertext, size_t message_num_block){
 
     struct AES_round_secret AES_rs;
@@ -285,8 +330,10 @@ __global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, uint8_t
     printf("[DEVICE]: Risultato pari a: %s\n",device_chipertext);
 }
 
-/** Perfrom a read from a file
- * file: name of the file to read
+/**
+ * function that read from file
+ * 
+ * @param file in input to read
  */
 __host__ string read_data_from_file(string file) {
 
@@ -310,17 +357,16 @@ __host__ string read_data_from_file(string file) {
 
 int main() {
 
-    // qui instanzia una struttura di cuda in cui ci sono le properties della gpu
-    cudaDeviceProp prop;                    //cudaDeviceProp of an object
-    // qui invece serve per definire tutti i campi della struttura instanziata prima con le caratteristiche della gpu corrente
-    /*
-    Parameters
-    prop
-        - Properties for the specified device 
-    device
-        - Device number to get properties for
-    */
-    cudaGetDeviceProperties(&prop, 0);  //The second parameter is that gpu
+
+    /******************************************** SET GPU PROPERTIES **************************************************/
+
+    // inizialize of a struct with all the gpu properties 
+    cudaDeviceProp prop;                   
+    // we define the field of the previous struct with the properties of the specified device
+    // prop is the struct and the second paramether is the device number
+    cudaGetDeviceProperties(&prop, 0);  
+
+    /************************************** GET THE PLAINTEXT AND CIPHERTEXT ******************************************/
 
     unsigned char* decrypted_plaintext = (unsigned char*)malloc(CIPHERTEXT_LENGTH);
     //host receive data: device => host
@@ -373,6 +419,7 @@ int main() {
 
     printf("CT:%s\n", ciphertext);
 
+    /************************************* ALLOCATE AND COPY ON THE DEVICE ********************************************/
 
     // declaration of the device variable
     uint8_t* device_chipertext;
@@ -397,13 +444,7 @@ int main() {
         printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
 
-
     printf("\t completed!\n");
-
-    // host send data: host => device
-
-    // TODO
-    // host send data: host => device
 
     printf("copying data on device -->");
 
@@ -420,8 +461,9 @@ int main() {
         printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
 
-
     printf("\t completed! \n");
+
+    /********************************************* LAUNCH OF THE KERNEL ***********************************************/
 
     printf("launch the kernel\n");
 
@@ -444,8 +486,9 @@ int main() {
 
     
     string s((char*)decrypted_plaintext);
-    printf("[HOST]:Risultato con lunghezza %lu pari a: %s\n",s.length(), s);
+    printf("[HOST]:Risultato con lunghezza %lu pari a: %s\n",s.length(), s.c_str());
 
+    /**************************************** RELEASE OF THE DEVICE ALLOCATION ****************************************/
     // release device memory
     cudaFree(device_chipertext);
     cudaFree(device_plaintext);
