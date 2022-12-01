@@ -15,7 +15,13 @@ using namespace std;
 #define AES_KEY_BYTES_LENGTH 32
 #define AES_KEY_EXPANDED_BYTES_LENGTH 240
 #define NUMBER_OF_ROUNDS 14
-#define CHIPHERTEXT_LENGTH 448
+#define PLAINTEXT_LENGTH 445
+#define CIPHERTEXT_LENGTH 448
+#define DEBUG true
+
+#define CUDADEBUG(cudaError)      \
+    if (cudaError != cudaSuccess) \
+        DEBUG(cudaGetErrorString(cudaError));
 
 //Multiply x times
 #define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
@@ -27,6 +33,11 @@ using namespace std;
     ((y >> 2 & 1) * xtimes(xtimes(x))) ^                  \
     ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
     ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
+
+const string plaintext_file = "./../../files/text_files/plaintext.txt";
+const string ciphertext_file = "./../../files/text_files/ciphertext.txt";
+const string key_aes_file = "./../../files/secret_files/key_aes.txt";
+const string iv_file = "./../../files/secret_files/iv.txt";
 
 __device__ uint8_t AES_inverse_Sbox[256] ={
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
@@ -47,54 +58,23 @@ __device__ uint8_t AES_inverse_Sbox[256] ={
   0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d 
 };
 
-struct AES_round_secret{
+//Constant matrix
+//const_mat[i] contains the value given by the power of x (i-1), the power of x in the field GF(2^8) (x is represented as {02})
+__device__ __host__ const uint8_t const_mat[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+
+
+ struct AES_round_secret{
 
     unsigned char round_key[AES_KEY_EXPANDED_BYTES_LENGTH];
     unsigned char round_iv[IV_BYTES_LENGTH];
 };
-
-__device__ void initialize_AES_round_secret(uint8_t* inverse_sbox, struct AES_round_secret* rs, unsigned char* key, unsigned char* iv){
-  
-    expand_key_decryption(inverse_sbox, rs->round_key, key);
-    memcpy (rs->round_iv, iv, IV_BYTES_LENGTH); 
-}
-
-
-// 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
-uint8_t key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17,
-                    0xd4, 0x18, 0xa5, 0x5a, 0x2c, 0xfd, 0x07, 0x7d, 0x12, 0x15, 0xed, 0x25, 0x1c, 0x4a, 0x57, 0xd8, 0xec};
-
-// D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
-uint8_t iv[IV_BYTES_LENGTH] = { 0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96};
-
-
-//Constant matrix
-//const_mat[i] contains the value given by the power of x (i-1), the power of x in the field GF(2^8) (x is represented as {02})
-static const uint8_t const_mat[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
-
-
-/** SubBytes: Non-linear replacement of all bytes that are replaced according to a specific table
- * unsigned char state[]: Bytes to be substituted
- * unsigned char sbox[]: Replacement table
-*/
-__device__  void sub_bytes_decryption(uint8_t* state[], const uint8_t AES_inverse_Sbox[]) {
-    
-    unsigned int i, j;
-    char state_byte_value;
-    //Two cycles of 4 iteration for a max of 16 bytes (the block length)
-    for (i = 0; i < 4; ++i) {                                   
-        for (j = 0; j < 4; ++j)
-            state_byte_value = state[j][i];
-            state[j][i] = AES_inverse_Sbox[state_byte_value];
-    }
-}
 
 /** Expand_Key: Perform the expansion of the key needed in AES
  * unsigned char sbox[]: Replacement table
  * const uint8_t* key: Original key
  * uint8_t* rounded_key: result of the expansion
 */
-void expand_key_decryption(const uint8_t AES_inverse_Sbox[], const uint8_t* key, uint8_t* rounded_key) {
+__device__ __host__ void expand_key_decryption(const uint8_t AES_inverse_Sbox[], const uint8_t* key, uint8_t* rounded_key) {
     //Cycle for each 32-bit word, for the first round the key is rounded starting from the original key
     for (unsigned i = 0; i < 8; i++)
         for (unsigned j = 0; j < 4; j++)
@@ -146,25 +126,62 @@ void expand_key_decryption(const uint8_t AES_inverse_Sbox[], const uint8_t* key,
 
 }
 
+
+__device__ AES_round_secret * initialize_AES_round_secret(uint8_t* inverse_sbox, struct AES_round_secret* rs, unsigned char* key, unsigned char* iv){
+  
+    expand_key_decryption(inverse_sbox, rs->round_key, key);
+    memcpy (rs->round_iv, iv, IV_BYTES_LENGTH); 
+
+    return rs;
+}
+
+
+// 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
+__device__ unsigned char key[AES_KEY_BYTES_LENGTH] = { 0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17,
+                    0xd4, 0x18, 0xa5, 0x5a, 0x2c, 0xfd, 0x07, 0x7d, 0x12, 0x15, 0xed, 0x25, 0x1c, 0x4a, 0x57, 0xd8, 0xec};
+
+// D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
+__device__ unsigned char iv[IV_BYTES_LENGTH] = { 0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96};
+
+
+
+
+/** SubBytes: Non-linear replacement of all bytes that are replaced according to a specific table
+ * unsigned char state[]: Bytes to be substituted
+ * unsigned char sbox[]: Replacement table
+*/
+__device__  void sub_bytes_decryption(uint8_t* state, const uint8_t AES_inverse_Sbox[]) {
+    
+    unsigned int i, j;
+    char state_byte_value;
+    //Two cycles of 4 iteration for a max of 16 bytes (the block length)
+    for (i = 0; i < 4; ++i) {                                   
+        for (j = 0; j < 4; ++j)
+            state_byte_value = state[j * 4 + i];
+            state[j * 4 + i] = AES_inverse_Sbox[state_byte_value];
+    }
+}
+
+
 /** MixColumns_Inv: takes the four bytes of each column and combines them using an invertible linear transformation.
  *  Used in conjunction, ShiftRows and MixColumns ensure that the criterion of confusion and diffusion is respected
  *
  *  unsigned char state: Bytes to be inverted
 */
-__device__ void inv_mix_columns_decryption(uint8_t* state[]) {
+__device__ void inv_mix_columns_decryption(uint8_t* state) {
     uint8_t vect[4];
 
     for (uint8_t i = 0; i < 4; i++) {
 
         for (uint8_t j = 0; j < 4; j++){
-            vect[j] = state[i][j];
+            vect[j] = state[i * 4 + j];
         }
             
 
-        state[i][0] = mul(vect[0], 0x0e) ^ mul(vect[1], 0x0b) ^ mul(vect[2], 0x0d) ^ mul(vect[3], 0x09);
-        state[i][1] = mul(vect[0], 0x09) ^ mul(vect[1], 0x0e) ^ mul(vect[2], 0x0b) ^ mul(vect[3], 0x0d);
-        state[i][2] = mul(vect[0], 0x0d) ^ mul(vect[1], 0x09) ^ mul(vect[2], 0x0e) ^ mul(vect[3], 0x0b);
-        state[i][3] = mul(vect[0], 0x0b) ^ mul(vect[1], 0x0d) ^ mul(vect[2], 0x09) ^ mul(vect[3], 0x0e);
+        state[i * 4 + 0] = mul(vect[0], 0x0e) ^ mul(vect[1], 0x0b) ^ mul(vect[2], 0x0d) ^ mul(vect[3], 0x09);
+        state[i * 4 + 1] = mul(vect[0], 0x09) ^ mul(vect[1], 0x0e) ^ mul(vect[2], 0x0b) ^ mul(vect[3], 0x0d);
+        state[i * 4 + 2] = mul(vect[0], 0x0d) ^ mul(vect[1], 0x09) ^ mul(vect[2], 0x0e) ^ mul(vect[3], 0x0b);
+        state[i * 4 + 3] = mul(vect[0], 0x0b) ^ mul(vect[1], 0x0d) ^ mul(vect[2], 0x09) ^ mul(vect[3], 0x0e);
     }
 }
 
@@ -172,51 +189,66 @@ __device__ void inv_mix_columns_decryption(uint8_t* state[]) {
 /** ShiftRows: shifts the rows in the state matrix to the left
  *  Each row unless the 1st one is moved by a different offset of columns
 */ 
-__device__ void inv_shift_rows_decryption(uint8_t* state[]) {
+__device__ void inv_shift_rows_decryption(uint8_t* state) {
     uint8_t tmp;
     
-    tmp = state[3][1];
-    state[3][1] = state[2][1];
-    state[2][1] = state[1][1];
-    state[1][1] = state[0][1];
-    state[0][1] = tmp;
+    tmp = state[3 * 4 + 1];
+    state[3*4 + 1] = state[2 * 4 + 1];
+    state[2 * 4 + 1] = state[1 * 4 + 1];
+    state[1 * 4 + 1] = state[0 * 4 + 1];
+    state[0 * 4 + 1] = tmp;
 
 
-    tmp = state[0][2];
-    state[0][2] = state[2][2];
-    state[2][2] = tmp;
+    tmp = state[0 * 4 + 2];
+    state[0 * 4 + 2] = state[2 * 4 + 2];
+    state[2 * 4 + 2] = tmp;
 
-    tmp = state[1][2];
-    state[1][2] = state[3][2];
-    state[3][2] = tmp;
+    tmp = state[1 * 4 + 2];
+    state[1 * 4 + 2] = state[3 * 4 + 2];
+    state[3 * 4 + 2] = tmp;
 
     // shift row4 by 3
-    tmp = state[0][3];
-    state[0][3] = state[1][3];
-    state[1][3] = state[2][3];
-    state[2][3] = state[3][3];
-    state[3][3] = tmp;
+    tmp = state[0 * 4 + 3];
+    state[0 * 4 + 3] = state[1 * 4 + 3];
+    state[1 * 4 + 3] = state[2 * 4 + 3];
+    state[2 * 4 + 3] = state[3 * 4 + 3];
+    state[3 * 4 + 3] = tmp;
 }
 
 /* AddRoundKey:  Add the round key to the state matrix, using XOR operation
 */
-__device__ void add_round_key(uint8_t round, uint8_t *state[], const uint8_t* roundKey) {
+__device__ void add_round_key(uint8_t round, uint8_t *state, const uint8_t* roundKey) {
     for (uint8_t i = 0; i < 4; ++i) {
         for (uint8_t j = 0; j < 4; ++j) {
-            state[i][j] ^= roundKey[(round * 4 * 4) + (i * 4) + j];
+            state[i * 4 + j] ^= roundKey[(round * 4 * 4) + (i * 4) + j];
         }
     }
 }
 
+/*__device__ void create_state_matrix(unsigned char *ciphertext){
+    for(int i = 0; i < 4; i++){
+        for(int j = 0; j < 4; j++){
+            state_matrix[i][j] = ciphertext[i * 4 + j];
+        }
+    }
+}*/
+
+__device__ void xor_with_iv(uint8_t* state_matrix, uint8_t* iv) {
+    uint8_t i,j;
+    for (i = 0; i < 4; ++i) { // The block in AES is always 128bit no matter the key size
+        for(j = 0; j < 4; ++j)
+        state_matrix[i * 4 + j] ^= iv[i * 4 + j];
+    }
+}
 
 // TODO:
 //  creare una funzione __host__ __device__ per decifrare il cipher
-__device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix[], const uint8_t* round_key) {
+__device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix, struct AES_round_secret *rs) {
 
     uint8_t current_round = NUMBER_OF_ROUNDS;
 
     // Add the initial key to the state matrix before the first round of decryption
-    add_round_key(NUMBER_OF_ROUNDS, state_matrix, round_key);
+    add_round_key(NUMBER_OF_ROUNDS, state_matrix, rs->round_key);
 
     current_round--;
 
@@ -225,24 +257,54 @@ __device__ void decryption(const uint8_t*AES_inverse_Sbox, uint8_t *state_matrix
 
         inv_shift_rows_decryption(state_matrix);
         sub_bytes_decryption(state_matrix, AES_inverse_Sbox);
-        add_round_key(current_round, state_matrix, round_key);
+        add_round_key(current_round, state_matrix, rs->round_key);
         inv_mix_columns_decryption(state_matrix);
     }
 
     inv_shift_rows_decryption(state_matrix);
     sub_bytes_decryption(state_matrix, AES_inverse_Sbox);
-    add_round_key(current_round, state_matrix, round_key);
-
+    add_round_key(current_round, state_matrix, rs->round_key);
+    xor_with_iv(state_matrix, rs->round_iv);
+    
 }
 
 //  creare una funzione che viene invocata dal kernel __global__ per decrifrare il cipher che chiama la funzione sopra
 // in cui gestiamo x 
-__global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, struct AES_round_secret *rs , uint8_t* device_chipertext, size_t message_num_block){
+__global__ void kernel_decrypt(const unsigned char* device_inverse_sbox, uint8_t* device_chipertext, size_t message_num_block){
 
-    int x = threadIdx.x + blockDim.x * blockIdx.x;
-    if(x < message_num_block){
-        decryption(device_inverse_sbox, (unsigned char**)device_chipertext + x, rs->round_key);
+    struct AES_round_secret AES_rs;
+
+    struct AES_round_secret *rs = initialize_AES_round_secret(AES_inverse_Sbox, &AES_rs, key, iv);
+
+    //create_state_matrix(device_chipertext);
+    //int x = threadIdx.x + blockDim.x * blockIdx.x;
+    //if(x < message_num_block){
+        decryption(device_inverse_sbox, device_chipertext, rs);
+    //}
+
+    printf("[DEVICE]: Risultato pari a: %s\n",device_chipertext);
+}
+
+/** Perfrom a read from a file
+ * file: name of the file to read
+ */
+__host__ string read_data_from_file(string file) {
+
+    fstream getFile;
+    string str;
+    string file_contents;
+    getFile.open(file, ios::in | ios::binary);
+
+    while (getline(getFile, str)) {
+        file_contents += str;
+        file_contents.push_back('\n');
     }
+
+    file_contents.pop_back();
+
+    getFile.close();
+
+    return file_contents;
 }
 
 
@@ -260,47 +322,132 @@ int main() {
     */
     cudaGetDeviceProperties(&prop, 0);  //The second parameter is that gpu
 
-    uint8_t* buf;
+    unsigned char* decrypted_plaintext = (unsigned char*)malloc(CIPHERTEXT_LENGTH);
+    //host receive data: device => host
+    memset(decrypted_plaintext, 0, CIPHERTEXT_LENGTH);
 
-    struct AES_round_secret AES_rs;
+    //Allocating pt space
+    unsigned char* plaintext = (unsigned char*)malloc(PLAINTEXT_LENGTH);
+    if (!plaintext) {
+        cerr << "ERROR: plaintext space allocation went wrong" << endl;
+        return -1;
+    }
+    memset(plaintext, 0, PLAINTEXT_LENGTH);
+    strcpy((char*)plaintext, (char*)read_data_from_file(plaintext_file).c_str());
 
-    struct AES_round_secret *device_AES_rs;
+    if (DEBUG) {
+        printf("DEBUG: The Plaintext is: %s\n", plaintext);
+    }
 
-    initialize_AES_round_secret(AES_inverse_Sbox, &AES_rs, key, iv);
+     //Allocating pt space
+    unsigned char ciphertext [448] = {
+        0x73, 0xF8, 0x42, 0x09, 0x89, 0x89, 0xD4, 0x8F, 0x95, 0xFA, 0x1C, 0x88, 0xF6, 0x98, 0x6C, 0x49,
+        0x10, 0x35, 0xCE, 0x48, 0x4B, 0x41, 0x41, 0xFE, 0xFF, 0x06, 0x40, 0x0E, 0x0A, 0xCF, 0x2C, 0x28,
+        0x29, 0xD2, 0x9C, 0xCD, 0xC0, 0xED, 0x6C, 0x06, 0x9D, 0x99, 0xE1, 0x60, 0x85, 0xF3, 0xEA, 0x19,
+        0xA2, 0x9A, 0x15, 0x1D, 0x59, 0x07, 0xB7, 0xC4, 0x5A, 0xB2, 0xE9, 0xF1, 0x56, 0xF2, 0xDF, 0xBE,
+        0xF6, 0x94, 0xD4, 0xFC, 0xF9, 0xE6, 0x1E, 0xCE, 0xB5, 0x4E, 0x3B, 0x1D, 0xEA, 0x9B, 0x7C, 0x53,
+        0xB9, 0xA8, 0x64, 0x88, 0xBC, 0xF8, 0x78, 0xE8, 0x0A, 0xDE, 0x48, 0x54, 0x7E, 0xE2, 0x35, 0x98,
+        0xC5, 0xAB, 0x99, 0x32, 0x83, 0x51, 0xF8, 0x4F, 0xF6, 0xA4, 0x72, 0xAC, 0xF0, 0x7E, 0xF8, 0x3D, 
+        0x32, 0x95, 0x06, 0x7E, 0x7A, 0xD8, 0xD2, 0xF1, 0xC8, 0x3A, 0x85, 0x3D, 0x2A, 0xB6, 0x29, 0x68, 
+        0x37, 0x3B, 0x6A, 0x18, 0x8E, 0x97, 0xAB, 0x2E, 0x2C, 0x62, 0x9E, 0x14, 0x6C, 0x10, 0x78, 0xA9,
+        0x87, 0x02, 0x18, 0xFD, 0x12, 0xE7, 0x3D, 0xCB, 0xB5, 0x25, 0xE0, 0x23, 0xDC, 0xEF, 0x8A, 0xA8,
+        0x49, 0x2E, 0x5E, 0x46, 0xF2, 0xFC, 0x8A, 0x39, 0xEF, 0x2C, 0x3D, 0x97, 0xD1, 0xA7, 0x0B, 0x49, 
+        0xC2, 0x83, 0xC7, 0x60, 0x93, 0x5C, 0x8E, 0x8C, 0x0E, 0xCE, 0x63, 0xEF, 0x6C, 0xEB, 0x54, 0x32,
+        0x76, 0xFA, 0x87, 0xA4, 0xB5, 0x48, 0x48, 0x83, 0x8A, 0xFF, 0x4B, 0xE6, 0x0D, 0x45, 0x1A, 0x70,
+        0x67, 0xEA, 0x8A, 0x26, 0xFB, 0xD5, 0x4F, 0x39, 0xE5, 0x64, 0xCD, 0xD2, 0xD8, 0xA9, 0x07, 0xE5,
+        0xC9, 0xC3, 0xB8, 0x2F, 0xDA, 0xBF, 0xD2, 0x07, 0x69, 0x58, 0x9A, 0x07, 0x4B, 0x76, 0x16, 0x92,
+        0xC0, 0x7B, 0x0C, 0x6F, 0x04, 0xE2, 0xD5, 0x1D, 0x67, 0xE4, 0xF7, 0xDA, 0x45, 0xD8, 0x66, 0xC3, 
+        0x96, 0xF3, 0xF8, 0x4E, 0x31, 0xA0, 0x2F, 0x28, 0xD5, 0xF8, 0x1C, 0x7F, 0x17, 0x98, 0x5C, 0xD5,
+        0x71, 0x26, 0x87, 0x44, 0x08, 0x24, 0x6C, 0x9E, 0x0E, 0xD6, 0xD8, 0x35, 0x22, 0x55, 0xF6, 0xA6,
+        0x3A, 0x4B, 0xDA, 0xB2, 0xAE, 0xEB, 0xBE, 0xCB, 0x15, 0x82, 0xD8, 0xCD, 0xB7, 0xCC, 0x6D, 0xB8,
+        0xF1, 0x89, 0x71, 0x81, 0x7C, 0xDF, 0x13, 0x3E, 0xCC, 0x87, 0x53, 0x3D, 0x1B, 0xA3, 0x1B, 0x18,
+        0xE7, 0x20, 0xFF, 0x71, 0xEA, 0x51, 0xC1, 0x51, 0x69, 0xF1, 0x42, 0x94, 0xA9, 0x00, 0x30, 0xD9,
+        0xEA, 0x14, 0x79, 0x5E, 0xB2, 0x90, 0x84, 0x2D, 0xEB, 0xC2, 0xF3, 0x88, 0x88, 0x69, 0x8D, 0x5F,
+        0x67, 0x50, 0xD8, 0x2B, 0x46, 0xF9, 0x09, 0x38, 0x5F, 0x66, 0x47, 0x29, 0x28, 0x63, 0x9D, 0xC9,
+        0x01, 0x7B, 0xDA, 0xBE, 0xE6, 0x9E, 0x8A, 0x18, 0x32, 0xB9, 0x49, 0xA7, 0xAE, 0x9D, 0x30, 0xE1,
+        0x64, 0xEE, 0x71, 0x5F, 0x89, 0xFB, 0x8F, 0xFF, 0xBA, 0x19, 0x76, 0xC8, 0xB6, 0xFA, 0x46, 0xBB,
+        0x0F, 0x60, 0xE5, 0x85, 0x3B, 0x98, 0x83, 0x6C, 0x3B, 0x3D, 0x88, 0x29, 0x1E, 0x30, 0x40, 0x35,
+        0xE6, 0xD4, 0xEB, 0xEC, 0x2C, 0x88, 0xE4, 0x9A, 0x9C, 0x7E, 0xFC, 0x9B, 0x82, 0x44, 0x9F, 0x1F,
+        0xC9, 0xE6, 0x6F, 0xD9, 0x0A, 0x98, 0xA7, 0x63, 0x68, 0x47, 0x29, 0x31, 0xD2, 0x42, 0xDC, 0xFD
+    };
+
+    printf("CT:%s\n", ciphertext);
+
 
     // declaration of the device variable
     uint8_t* device_chipertext;
     uint8_t* device_inverse_sbox;
-    uint8_t* device_round_key;
-    uint8_t* device_round_iv;
+    uint8_t* device_plaintext;
     
+    printf("\n\nMemory allocation on device -->");
+
+    cudaError_t cudaerr;
 
     // allocate device memory
-    cudaMalloc((void**)&device_chipertext, sizeof(uint8_t) * CHIPHERTEXT_LENGTH);
-    cudaMalloc((void**)&device_inverse_sbox, sizeof(uint8_t) * 256);
-    cudaMalloc((void**)&device_AES_rs, sizeof(struct AES_round_secret));
+    cudaerr = cudaMalloc((void**)&device_chipertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMalloc((void**)&device_plaintext, sizeof(uint8_t) * PLAINTEXT_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMalloc((void**)&device_inverse_sbox, sizeof(uint8_t) * 256);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+
+
+    printf("\t completed!\n");
+
     // host send data: host => device
 
     // TODO
     // host send data: host => device
-    cudaMemcpy(device_chipertext, buf, sizeof(uint8_t) * CHIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
-    cudaMemcpy(device_inverse_sbox, AES_inverse_Sbox, sizeof(uint8_t) * 256, cudaMemcpyHostToDevice);
-    cudaMemcpy(device_AES_rs, &AES_rs, sizeof(struct AES_round_secret), cudaMemcpyHostToDevice);
+
+    printf("copying data on device -->");
+
+    cudaerr = cudaMemcpy(device_chipertext, ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMemcpy(device_plaintext, plaintext, sizeof(uint8_t) * PLAINTEXT_LENGTH, cudaMemcpyHostToDevice);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMemcpy(device_inverse_sbox, AES_inverse_Sbox, sizeof(uint8_t) * 256, cudaMemcpyHostToDevice);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+
+
+    printf("\t completed! \n");
+
+    printf("launch the kernel\n");
 
     // AES_BLOCKLEN = 16
     // si calcolano i blocchi totali del messaggio 
-    size_t message_num_block = CHIPHERTEXT_LENGTH / AES_BLOCK_LENGTH;
+    size_t message_num_block = CIPHERTEXT_LENGTH / AES_BLOCK_LENGTH;
     // maxThreadsPerBlock is the maximum number of threads per block per la gpu con cui si lavora
     size_t thread_per_block = min(message_num_block, (size_t)prop.maxThreadsPerBlock);
     // qui si sta trovando il numero dei blocchi ma non so bene che sta facendo 
     size_t device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block;
 
-    kernel_decrypt <<<device_setted_block_number, thread_per_block>>> (device_inverse_sbox, device_AES_rs, device_chipertext, message_num_block);
+    kernel_decrypt <<<1, 1>>> (device_inverse_sbox, device_chipertext, message_num_block);
+    cudaerr = cudaDeviceSynchronize();
+    if (cudaerr != cudaSuccess){
+       printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
+    }
+    
     // host receive data: device => host
-    cudaMemcpy(buf, device_chipertext, sizeof(uint8_t) * CHIPHERTEXT_LENGTH, cudaMemcpyDeviceToHost);
+    cudaMemcpy(decrypted_plaintext, device_chipertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyDeviceToHost);
+
+    
+    string s((char*)decrypted_plaintext);
+    printf("[HOST]:Risultato con lunghezza %lu pari a: %s\n",s.length(), s);
+
     // release device memory
     cudaFree(device_chipertext);
-    cudaFree(device_round_key);
-    cudaFree(device_round_iv);
+    cudaFree(device_plaintext);
     cudaFree(device_inverse_sbox);
 }
