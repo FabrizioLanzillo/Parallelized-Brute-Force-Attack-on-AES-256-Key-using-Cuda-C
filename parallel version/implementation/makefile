@@ -2,7 +2,7 @@
 all: run
 
 run: 
-	nvcc aes_decryption.cu -o run
+	nvcc kernel.cu -o run
 
 clean:
 	rm run
