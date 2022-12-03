@@ -1,5 +1,5 @@
 CC = g++
-LFLAGS = -Wall -pthread -lssl -lcrypto -std=c++14 -Wno-unknown-pragmas #does not work without lssl 
+LFLAGS = -Wall -pthread -std=c++14 -Wno-unknown-pragmas #does not work without lssl 
 CFLAGS = -c -Wall 
 
 all: run.exe 
