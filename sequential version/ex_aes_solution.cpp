@@ -1,9 +1,5 @@
 #include <stdlib.h>
 #include <iostream>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <thread>
 #include <string.h>
 #include <fstream>
@@ -29,22 +25,11 @@ using namespace std;
 
 //              PARAMETERS
 //  Key generated from openssl enc -aes-256-cbc -key_aes secret -P -md sha1
-//  salt = B51DE47CC865460E
-//  key = 85926BE3DA736F475493C49276ED17D418A55A2CFD077D1215ED251C4A57D8EC
-//  85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC  
-//  iv = D8596B739EFAC0460E861F9B7790F996
+//  key = 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC  
 //  iv =D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
 
 const string plaintext_file = "./../files/text_files/plaintext.txt";
 const string ciphertext_file = "./../files/text_files/ciphertext.txt";
-const string key_aes_hex_file = "./../files/secret_files/key_aes_hex.txt";
-const string key_aes_file = "./../files/secret_files/key_aes.txt";
-//const string key_wrong_file = "key_wrong.txt";
-//const string key_wrong_file_hex = "key_wrong_hex.txt";
-const string iv_file_hex = "./../files/secret_files/iv_hex.txt";
-const string iv_file = "./../files/secret_files/iv.txt";
-const string salt_file_hex = "./../files/secret_files/salt_hex.txt";
-const string salt_file = "./../files/secret_files/salt.txt";
 
 /** Function that perform an encryption on AES-256
  * msg: Contain the data to be encrypted
@@ -98,25 +83,6 @@ int cbc_decrypt_fragment (unsigned char* ciphertext, AES_ctx* ctx){
 	return 0;
 }
 
-/** Function that removes the padding from the deciphered plaintext
- * size: deciphered plaintext with padding size
- * plaintext_with_pad: plaintext on which we have to remove the padding
- * plaintext: resulting plaintext without padding
- */
-bool remove_padding(int size, unsigned char*& plaintext_with_pad, unsigned char*& plaintext){
-	//Calculating the size of the Plaintext without padding
-	int padding_size_bytes = (int)plaintext_with_pad[size-1];
-
-	if(padding_size_bytes > BLOCK_SIZE){
-		return false;
-	}
-
-	memcpy(plaintext, plaintext_with_pad, size - padding_size_bytes);
-	
-	return true;
-}
-
-
 /** Perfrom a read from a file
  * file: name of the file to read
  */
@@ -153,11 +119,131 @@ void convert_key(string file_to_read, string file_to_save){
 
 }
 
+/** Function that perform the bruteforcing of AES-256
+ * hacked_key: key with an amount of bits that we suppose to know
+ * knowed_plaintext: original plaintext needed to compare the one obtained from decryption
+ * ciphertext: the cipher to decrypt
+ * plaintext: variable on which we have to return the decrypted PT (with padding)
+ * plaintext_no_pad: variable on which we have to return the decrypted PT (without padding)
+ * plainlen: length of the expected plaintext
+ * iv: variable needed to perform decryption, usually sent in clear with ciphertext size
+ */
+bool decryption_brute_force(unsigned char*& plaintext, unsigned char* ciphertext, int num_bits_to_hack,unsigned char* hacked_key,unsigned char* key, unsigned char* iv_aes){
+
+	unsigned char ascii_character;
+	//Calculate the number of cycles before the cycle to optimize
+	uintmax_t index = pow (BASE_NUMBER, num_bits_to_hack);
+
+	// array containg de character of the key that has to be hacked (i.e. 20 bits = 3 Bytes)
+	unsigned char bytes_to_hack [num_bits_to_hack/8 + 1];
+
+	unsigned char* ct_temp = (unsigned char*)malloc(PLAINTEXT_LENGHT);
+	memset(ct_temp,0,PLAINTEXT_LENGHT);
+	memcpy(ct_temp,ciphertext,PLAINTEXT_LENGHT);
+
+	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+	//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
+	uint8_t tmp, rem_bits = num_bits_to_hack % 8;
+
+	//Copy inside the bytes_to_hack the last byte
+	memcpy(bytes_to_hack + (num_bits_to_hack / 8), hacked_key + (num_bits_to_hack / 8), 1); // Copy just the last byte 
+
+	//Use the shift to clean up the part that we don't know of the last byte (like 4 bits in case of 20 bits to discover)
+	if(num_bits_to_hack % 8 != 0){
+		//With 20 bits -> 2
+		bytes_to_hack[num_bits_to_hack / 8 ] = hacked_key[AES_KEYLENGTH - 1 - (num_bits_to_hack / 8)] >> rem_bits;
+		tmp = bytes_to_hack[num_bits_to_hack / 8] << rem_bits;
+	}
+
+	/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+	/* START THE BRUTEFORCE - INITIATE TIME COUNTING */
+	auto begin = chrono::high_resolution_clock::now();
+
+	for(uintmax_t i = 0; i < index; i++){	//2^NUM_BITES_TO_HACK Cycles
+
+		AES_ctx new_ctx;
+		//Get the index address in order to extract and manage one byte at a time
+		uint8_t *pointer = (uint8_t*)&i;
+
+		//cout<< "-------------------------------------------- Attempt #"<<i+1<<" ----------------------------------------------"<<endl;
+		
+		// clean of the array (only the bytes that have to be completely cleaned, i.e. last two bytes)
+		memset(bytes_to_hack,0,num_bits_to_hack/8);
+
+		memset(plaintext,0,PLAINTEXT_LENGHT);
+
+		uint8_t numcycles = num_bits_to_hack/8 + 1;
+
+		// First copy the bytes that are whole
+		for(int j=0;j <  numcycles; j++){
+			//This part must be executed only if there is a part of a byte remaining to be inserted (like last 4 bits in case of 20 bits)
+			if(num_bits_to_hack % 8 != 0 && j == num_bits_to_hack/8){
+				//The addition of unsigned number perform the append correctly until the value inside pointer[j] overcome the capacity of the bit to be copied, 
+				//but this will never happen since we stop the cycle before it happen
+				bytes_to_hack[j] = tmp + pointer[j];
+				continue;
+			}
+			ascii_character = char(i >> (8*j));
+			sprintf((char*)&bytes_to_hack[j],"%c",ascii_character);
+		}
+
+		// we assemble the key with the new character, cycle needed to order the bytes in the correct way, otherwise it will result in a swap of the
+		// cycled bytes
+		for (int j = 0; j < (num_bits_to_hack/8) + 1; j++){
+			if(num_bits_to_hack % 8 != 0){
+				memcpy(&hacked_key[AES_KEYLENGTH - j - 1], &bytes_to_hack[j], 1);
+			}
+			else if(j < (num_bits_to_hack/8)){
+				memcpy(&hacked_key[AES_KEYLENGTH - j -1], &bytes_to_hack[j],  1);
+			}
+		}
+
+		//Initialize the context with the new key and the iv
+		AES_init_ctx_iv(&new_ctx, hacked_key, iv_aes);
+
+		//If the decrypt returns an error the key is wrong for sure
+		int ret = cbc_decrypt_fragment(ct_temp, &new_ctx);
+		if(ret == -1){
+			continue;
+		}
+
+		
+		if(!strcmp((const char*)hacked_key, (const char*)key)){
+
+			printf("%s\n\n",ct_temp);
+
+			auto end = chrono::high_resolution_clock::now();
+			auto elapsed = chrono::duration_cast<chrono::milliseconds>(end - begin);
+
+			printf("# of Bits: %d, # of Attempt: %ld, Elapsed Time in ms: %ld\n", num_bits_to_hack, i, elapsed.count());
+
+			char filename[62] = "sequential_result";
+			sprintf(filename, "results/sequential_result_%d.txt", num_bits_to_hack);
+			ofstream file_out;
+
+			file_out.open(filename, std::ios_base::app);
+			file_out <<elapsed.count()<< endl;
+			file_out.close();
+			cout << "Save results on file" << endl;
+
+			free(ct_temp);
+			return true;
+		}
+		else{
+			memcpy(ct_temp,ciphertext,PLAINTEXT_LENGHT);
+			continue;
+		}
+		//cout<< "--------------------------------------------------------------------------------------------------------------"<<endl;
+	}
+
+	cout<< "**************************************************"<<endl;
+	free(ct_temp);
+	return false;
+}
 
 int main (int argc, char **argv){
 	
-	//int num_bits_to_hack = atoi(argv[1]);
-	int num_bits_to_hack = 12;	
+	int num_bits_to_hack = atoi(argv[1]);
 
 	/* ------------------------------------- GET KEY -------------------------------------------------------- */
 	printf("------------------------------------- GET KEY --------------------------------------------------------\n");
@@ -212,14 +298,16 @@ int main (int argc, char **argv){
 
 	int ret = cbc_encrypt_fragment(ct, key_aes, iv_aes, &ctx);
 
+	//Save the ciphertext for bruteforcing
+	unsigned char* saved_ct =(unsigned char*)malloc(PLAINTEXT_LENGHT);
+	memcpy(saved_ct,ct,PLAINTEXT_LENGHT);
+
 	if(ret != 0){
 		printf("Error during encryption\n");
 	}
 	if(DEBUG){
 		printf("[DEBUG] result: %s\n", ct);
 	}
-
-	unsigned char* dec_pt = ct;
 
 	printf("------------------------------------------------------------------------------------------------------\n");
 	/* ------------------------------------- Decryption  -------------------------------------------------------- */
@@ -250,7 +338,7 @@ int main (int argc, char **argv){
 	//TEST COMPLETED - PROCEED TO EXECUTE THE BRUTEFORCING
 	printf("--------------------------------- PROCEED WITH BRUTEFORCING ----------------------------------------------\n");
 
-	printf("Bytes to hack: %d\n", num_bits_to_hack/8);
+	printf("Bits to hack: %d\n", num_bits_to_hack/8);
 
 	//Copy the amount of known bits, ex. if 20 bits has to be discovered we copy all the key except the last two bytes, the last for bits will be removed using the shift later
     unsigned char* hacked_key = (unsigned char*)malloc(AES_KEYLENGTH);
@@ -267,14 +355,7 @@ int main (int argc, char **argv){
 		printf("DEBUG: ** Start Bruteforcing **\n");
 	}
 
-	/*bool res = decryption_brute_force(plaintext, ct, PLAINTEXT_LENGHT, &ctx, decrypted_plaintext_no_pad, decrypted_PLAINTEXT_LENGHT, iv_aes, num_bits_to_hack);
-	
-	if(!strcmp((const char*)hacked_key, (const char*)key_aes)){
-		printf("Key corresponds!\n");
-	}
-	else{
-		printf("Error the keys does not correspond!\n");
-	}
+	bool res = decryption_brute_force(plaintext, saved_ct, num_bits_to_hack, hacked_key ,key_aes, iv_aes);
 
 	if(!res){
 		printf("Error during brute forcing attack\n");
@@ -286,7 +367,7 @@ int main (int argc, char **argv){
 
 	printf("----------------------------------------------------------------------------------------------------------\n");
 	// ------------------------------------------------------ //
-	*/
+
 	free(plaintext);
 	free(ct);
 
