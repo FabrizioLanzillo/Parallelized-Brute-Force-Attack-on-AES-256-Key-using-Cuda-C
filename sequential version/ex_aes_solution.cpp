@@ -208,8 +208,8 @@ bool decryption_brute_force(unsigned char*& plaintext, unsigned char* ciphertext
 		}
 
 		
-		if(!strcmp((const char*)hacked_key, (const char*)key)){
-
+		if(!memcmp(hacked_key, key,AES_KEYLENGTH)){
+			printf("-- ---- key found! ---- --\n\n");
 			printf("%s\n\n",ct_temp);
 
 			auto end = chrono::high_resolution_clock::now();
@@ -217,16 +217,23 @@ bool decryption_brute_force(unsigned char*& plaintext, unsigned char* ciphertext
 
 			printf("# of Bits: %d, # of Attempt: %ld, Elapsed Time in ms: %ld\n", num_bits_to_hack, i, elapsed.count());
 
-			char filename[62] = "sequential_result";
-			sprintf(filename, "results/sequential_result_%d.txt", num_bits_to_hack);
-			ofstream file_out;
+			char* filename = new char[60];
+			sprintf(filename,"./results/sequential_result_%d.txt",num_bits_to_hack);
+			printf("%s\n\n",filename);
 
-			file_out.open(filename, std::ios_base::app);
-			file_out <<elapsed.count()<< endl;
-			file_out.close();
+			
+			ofstream outdata;
+			outdata.open(filename); // opens the file
+			if( !outdata ) { // file couldn't be opened
+				cerr << "Error: file could not be opened" << endl;
+				return -1;
+			}
+
+			outdata << "77";
+			outdata.close();
 			cout << "Save results on file" << endl;
-
 			free(ct_temp);
+			delete[] filename;
 			return true;
 		}
 		else{
@@ -234,6 +241,7 @@ bool decryption_brute_force(unsigned char*& plaintext, unsigned char* ciphertext
 			continue;
 		}
 		//cout<< "--------------------------------------------------------------------------------------------------------------"<<endl;
+		free(ct_temp);
 	}
 
 	cout<< "**************************************************"<<endl;
@@ -244,7 +252,7 @@ bool decryption_brute_force(unsigned char*& plaintext, unsigned char* ciphertext
 int main (int argc, char **argv){
 	
 	//int num_bits_to_hack = atoi(argv[1]);
-	int num_bits_to_hack = 8;
+	int num_bits_to_hack = 10;
 	/* ------------------------------------- GET KEY -------------------------------------------------------- */
 	printf("------------------------------------- GET KEY --------------------------------------------------------\n");
 	
@@ -384,13 +392,7 @@ int main (int argc, char **argv){
 	//Copy the amount of known bits, ex. if 20 bits has to be discovered we copy all the key except the last two bytes, the last for bits will be removed using the shift later
     unsigned char* hacked_key = (unsigned char*)malloc(AES_KEYLENGTH);
 	memset(hacked_key,0,AES_KEYLENGTH);
-	//memcpy(hacked_key, key_aes, (AES_KEYLENGTH));
-	strcpy((char*)hacked_key, (char*)key_aes);
-
-	if(DEBUG){
-		printf("HACKED KEY: %s\n", hacked_key);
-		printf("KEY: %s\n", key_aes);
- 	}
+	memcpy(hacked_key, key_aes, AES_KEYLENGTH);
 
 	if(DEBUG){
 		printf("DEBUG: ** Start Bruteforcing **\n");
@@ -403,7 +405,10 @@ int main (int argc, char **argv){
 	}
 
 	if(DEBUG){
-		printf("DEBUG: Brute Force completed and key obtained: %s\n", hacked_key);
+		printf("DEBUG: Brute Force completed and key obtained:\n");
+		for(int i=0;i<32;i++)
+			printf("%d|", hacked_key[i]);
+		printf("\n");
 	}
 
 	printf("----------------------------------------------------------------------------------------------------------\n");
@@ -411,6 +416,8 @@ int main (int argc, char **argv){
 
 	free(plaintext);
 	free(ct);
+	free(saved_ct);
+	free(hacked_key);
 
 	return 1;
 }
