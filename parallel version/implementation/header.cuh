@@ -10,6 +10,7 @@
 #define CIPHERTEXT_LENGTH 448
 #define DEBUG true
 #define plaintext_file "./../../files/text_files/plaintext.txt"
+#define ciphertext_file "./../../files/text_files/ciphertext.txt"
 
 #define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
 
