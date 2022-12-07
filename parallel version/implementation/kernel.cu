@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <string>
 #include <algorithm>
 #include <cuda.h>
 #include "header.cuh"
