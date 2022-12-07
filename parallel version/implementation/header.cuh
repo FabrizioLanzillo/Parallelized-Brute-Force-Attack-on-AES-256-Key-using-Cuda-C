@@ -6,8 +6,8 @@
 #define COLUMN_NUMBER_STATE_MATRIX 4
 #define ROW_NUMBER_STATE_MATRIX 4
 #define AES_KEY_WORD_LENGTH 8
-#define PLAINTEXT_LENGTH 445
-#define CIPHERTEXT_LENGTH 448
+#define PLAINTEXT_LENGTH 28208
+#define CIPHERTEXT_LENGTH 28208
 #define DEBUG true
 #define plaintext_file "./../../files/text_files/plaintext.txt"
 #define ciphertext_file "./../../files/text_files/ciphertext.txt"

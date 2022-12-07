@@ -101,15 +101,13 @@ __device__ void AES_CBC_decrypt(uint8_t *state_matrix) {
  * 
  * @param device_chipertext is the ciphertext allocated on the device and that is going to be decrypted
  */
-__global__ void kernel_decrypt(uint8_t* device_chipertext){
+__global__ void kernel_decrypt(uint8_t* device_chipertext, size_t message_num_block){
 
     //create_state_matrix(device_chipertext);
     //int x = threadIdx.x + blockDim.x * blockIdx.x;
     //if(x < message_num_block){
     AES_CBC_decrypt(device_chipertext);
     //}
-
-    printf("[DEVICE]: Risultato pari a: %s\n",device_chipertext);
 }
 
 
@@ -196,18 +194,21 @@ int main() {
 
     // AES_BLOCKLEN = 16
     // si calcolano i blocchi totali del messaggio 
-    size_t message_num_block = 150000 / AES_BLOCK_LENGTH;
+    size_t message_num_block = CIPHERTEXT_LENGTH / AES_BLOCK_LENGTH;
     // maxThreadsPerBlock is the maximum number of threads per block per la gpu con cui si lavora
     size_t thread_per_block = min(message_num_block, (size_t)prop.maxThreadsPerBlock);
     // qui si sta trovando il numero dei blocchi ma non so bene che sta facendo 
+    printf("CIPHERTEXT_LENGTH: %d\n", CIPHERTEXT_LENGTH);
+    printf("AES_BLOCK_LENGTH: %d\n", AES_BLOCK_LENGTH);
     printf("message_num_block: %lu\n", message_num_block);
     printf("(size_t)prop.maxThreadsPerBlock: %lu\n", (size_t)prop.maxThreadsPerBlock);
+    printf("NUMERO THREADS = thread_per_block = min(message_num_block, (size_t)prop.maxThreadsPerBlock) %lu\n", thread_per_block);
     size_t device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block;
 
-    printf("device_setted_block_number: %lu\n", device_setted_block_number);
+    printf("NUMERO BLOCK = device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block: %lu\n", device_setted_block_number);
     printf("thread_per_block: %lu\n", thread_per_block);
 
-    kernel_decrypt <<<1, 2>>> (device_chipertext);
+    kernel_decrypt <<<1, 1>>> (device_chipertext, message_num_block);
     cudaerr = cudaDeviceSynchronize();
     if (cudaerr != cudaSuccess){
        printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
