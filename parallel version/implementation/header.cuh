@@ -295,7 +295,23 @@ __device__  void inv_mix_columns_decryption(state_t* state){
     }
 }
 
-/***************************************** PHASE OPERATIONS AES DECRYPTION ****************************************/
+/************************************************ CBC DECRYPTION **************************************************/
+/**
+ * this function put in xor the byte of the iv with the block decrypted after all the aes decryption phases 
+ * the iv for the first block is the aes iv, and then after the first block is the previous ciphertext block
+ * 
+ * @param state_matrix is the state matrix is the result of the aes encryption algorithm after all the phases
+ * @param iv is long 16 bytes and is put in xor with the state matrix
+ */
+__device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
+
+    for (unsigned int i = 0; i < AES_BLOCK_LENGTH; i++){
+
+        state_matrix[i] ^= iv[i];
+    }
+}
+
+/********************************************* AES DECRYPTION *****************************************************/
 
 /**
  * function that decrypts the single aes block through the NUMBER_OF_ROUNDS aes number of rounds
@@ -331,18 +347,4 @@ __device__  void decryption_rounds(state_t* state_matrix, const uint8_t* expande
     add_round_key(current_round, state_matrix, expanded_key);
 }
 
-/**
- * this function put in xor the byte of the iv with the block decrypted after all the aes decryption phases 
- * the iv for the first block is the aes iv, and then after the first block is the previous ciphertext block
- * 
- * @param state_matrix is the state matrix is the result of the aes encryption algorithm after all the phases
- * @param iv is long 16 bytes and is put in xor with the state matrix
- */
-__device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
-
-    for (unsigned int i = 0; i < AES_BLOCK_LENGTH; i++){
-
-        state_matrix[i] ^= iv[i];
-    }
-}
 
