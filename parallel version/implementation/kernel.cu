@@ -97,32 +97,25 @@ __device__ void AES_CBC_decrypt(uint8_t *state_matrix, uint8_t *decrypted_cipher
  */
 __global__ void kernel_decrypt(uint8_t* device_chipertext, uint8_t* device_decrypted_chipertext, uint8_t* device_cbc_iv, size_t message_num_block){
 
-    //create_state_matrix(device_chipertext);
-    //if(x < message_num_block){
-    //AES_CBC_decrypt(device_chipertext, device_decrypted_chipertext);
-    //}
-
-   // if(x == 0){
-    //    printf("sono il thread 0");
-   // }
-
     int index = blockIdx.x;
-    if(index == 0){
-        //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
-        AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), iv_aes);
+    if(index < message_num_block){
+
+        if(index == 0){
+            //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
+            AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), iv_aes);
+        }
+        else{
+            //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
+            AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), device_cbc_iv + ((index -1) * AES_BLOCK_LENGTH));
+        }
     }
-    else{
-        //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
-        AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), device_cbc_iv + ((index -1) * AES_BLOCK_LENGTH));
-    }
-   
 }
 
 
 int main() {
 
-
     /******************************************** SET GPU PROPERTIES **************************************************/
+
 
     // inizialize of a struct with all the gpu properties 
     cudaDeviceProp prop;                   
