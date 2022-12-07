@@ -69,28 +69,22 @@ __host__ string hexToASCII(string hex){
  * 
  * @param state_matrix is the state matrix which element are trasnformed through all the phases
  */
-__device__ void AES_CBC_decrypt(uint8_t *state_matrix) {
+__device__ void AES_CBC_decrypt(uint8_t *state_matrix, uint8_t *decrypted_ciphertext, uint8_t *iv) {
 
 
     AES_round_secret AES_secret;
-    uint8_t storeNextIv[AES_BLOCK_LENGTH];
 
     //Initialize the context
-    initialize_AES_round_secret(&AES_secret, key_aes, iv_aes);
+    initialize_AES_round_secret(&AES_secret, key_aes, iv);
 
     struct AES_round_secret* rs = &AES_secret;
-    
-    // decrypt for each aes block
-    for (int i = 0; i < CIPHERTEXT_LENGTH; i += AES_BLOCK_LENGTH){
 
-        memcpy(storeNextIv, state_matrix, AES_BLOCK_LENGTH);
-        // use of AES 256
-        decryption_rounds((state_t*)state_matrix, rs->expanded_key);
-        // use of the Cipher Block Chaining (CBC)
-        xor_with_iv(state_matrix, rs->round_iv);
-        memcpy(rs->round_iv, storeNextIv, AES_BLOCK_LENGTH);
-        state_matrix += AES_BLOCK_LENGTH;
-    }
+    // use of AES 256
+    decryption_rounds((state_t*)state_matrix, rs->expanded_key);
+    // use of the Cipher Block Chaining (CBC)
+    xor_with_iv(state_matrix, rs->round_iv);
+    
+    memcpy(decrypted_ciphertext, state_matrix, AES_BLOCK_LENGTH);    
 
     return;
 }
@@ -101,13 +95,27 @@ __device__ void AES_CBC_decrypt(uint8_t *state_matrix) {
  * 
  * @param device_chipertext is the ciphertext allocated on the device and that is going to be decrypted
  */
-__global__ void kernel_decrypt(uint8_t* device_chipertext, size_t message_num_block){
+__global__ void kernel_decrypt(uint8_t* device_chipertext, uint8_t* device_decrypted_chipertext, uint8_t* device_cbc_iv, size_t message_num_block){
 
     //create_state_matrix(device_chipertext);
-    //int x = threadIdx.x + blockDim.x * blockIdx.x;
     //if(x < message_num_block){
-    AES_CBC_decrypt(device_chipertext);
+    //AES_CBC_decrypt(device_chipertext, device_decrypted_chipertext);
     //}
+
+   // if(x == 0){
+    //    printf("sono il thread 0");
+   // }
+
+    int index = blockIdx.x;
+    if(index == 0){
+        //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
+        AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), iv_aes);
+    }
+    else{
+        //printf("sono il thread [%d] che lavora all-indirizzo %d\n", index, (index * AES_BLOCK_LENGTH));
+        AES_CBC_decrypt(device_chipertext + (index * AES_BLOCK_LENGTH), device_decrypted_chipertext + (index * AES_BLOCK_LENGTH), device_cbc_iv + ((index -1) * AES_BLOCK_LENGTH));
+    }
+   
 }
 
 
@@ -158,6 +166,8 @@ int main() {
     // declaration of the device variable
     uint8_t* device_chipertext;
     uint8_t* device_plaintext;
+    uint8_t* device_cbc_iv;
+    uint8_t* device_decrypted_ciphertext;
     
     printf("\n\nMemory allocation on device -->");
 
@@ -169,6 +179,14 @@ int main() {
         printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     cudaerr = cudaMalloc((void**)&device_plaintext, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMalloc((void**)&device_decrypted_ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    cudaerr = cudaMalloc((void**)&device_cbc_iv, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
     if (cudaerr != cudaSuccess) {
         printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
@@ -185,10 +203,16 @@ int main() {
     if (cudaerr != cudaSuccess) {
         printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
+     cudaerr = cudaMemcpy(device_cbc_iv, ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
+    if (cudaerr != cudaSuccess) {
+        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
 
     printf("\t completed! \n");
 
+
     /********************************************* LAUNCH OF THE KERNEL ***********************************************/
+
 
     printf("launch the kernel\n");
 
@@ -208,21 +232,25 @@ int main() {
     printf("NUMERO BLOCK = device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block: %lu\n", device_setted_block_number);
     printf("thread_per_block: %lu\n", thread_per_block);
 
-    kernel_decrypt <<<1, 1>>> (device_chipertext, message_num_block);
+    kernel_decrypt <<<1763, 1>>> (device_chipertext, device_decrypted_ciphertext, device_cbc_iv, message_num_block);
     cudaerr = cudaDeviceSynchronize();
     if (cudaerr != cudaSuccess){
        printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
     }
     
     // host receive data: device => host
-    cudaMemcpy(decrypted_plaintext, device_chipertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyDeviceToHost);
+    cudaMemcpy(decrypted_plaintext, device_decrypted_ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyDeviceToHost);
 
     
     string s((char*)decrypted_plaintext);
     printf("[HOST]:Risultato con lunghezza %lu pari a: %s\n",s.length(), s.c_str());
 
     /**************************************** RELEASE OF THE DEVICE ALLOCATION ****************************************/
+
+   
     // release device memory
     cudaFree(device_chipertext);
     cudaFree(device_plaintext);
+    
+
 }
