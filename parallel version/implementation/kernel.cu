@@ -353,7 +353,25 @@ int main() {
 
     printf("Number of block : %lu and Number of threads: %lu\n", num_block, thread_per_block);
 
+    float ms=0;
+
+    //Event creation
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
     kernel_hack <<<num_block, thread_per_block >>> (device_ciphertext, device_plaintext, device_cbc_iv, iter_num, device_key_to_hack, device_return_key);
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+
+    cudaEventElapsedTime(&ms, start, stop);
+
+    printf("Time elapsed: %f ms\n\n", ms);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     cudaDeviceSynchronize();
 
