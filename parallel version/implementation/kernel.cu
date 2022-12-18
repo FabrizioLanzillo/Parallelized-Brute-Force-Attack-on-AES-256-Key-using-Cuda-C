@@ -91,11 +91,11 @@ __device__ void single_block_decrypt(uint8_t *state_matrix, uint8_t *iv,const ui
  * 
  * @param device_ciphertext is the ciphertext allocated on the device and that is going to be decrypted
  */
-__global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t message_num_block, uint8_t* device_key_to_hack, uint8_t* device_return_key){
+__global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t iter_num, uint8_t* device_key_to_hack, uint8_t* device_return_key){
     
     uint32_t index = threadIdx.x + (blockIdx.x * blockDim.x);
 
-    if (index < message_num_block) {
+    if (index < iter_num) {
 
         // declaration of the data structure to implement the hack
         unsigned char bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
@@ -347,6 +347,9 @@ int main() {
     size_t thread_per_block = (size_t)prop.maxThreadsPerBlock / 2;
     // compute the number of block to initialize
     size_t num_block = iter_num / thread_per_block;
+    if(num_block < 1){
+        num_block = 1;
+    }
     
     // qui si sta trovando il numero dei blocchi ma non so bene che sta facendo 
     //size_t device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block;
@@ -385,6 +388,15 @@ int main() {
     if (cudaerr != cudaSuccess) {
         printf("CudaMemcpy error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
+
+    char filename[62] = "parallel_result";
+    sprintf(filename, "./../results/parallel_result_%d.txt", NUMBER_BITS_TO_HACK);
+    ofstream file_out;
+
+    file_out.open(filename, std::ios_base::app);
+    file_out <<ms<< endl;
+    file_out.close();
+    printf("Save results on file\n");
     
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
