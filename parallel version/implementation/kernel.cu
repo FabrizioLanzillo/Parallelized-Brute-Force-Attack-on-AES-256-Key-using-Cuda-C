@@ -59,6 +59,35 @@ __host__ string hexToASCII(string hex){
     return ascii;
 }
 
+/**
+ * function that print the key in the hex format
+ * 
+ * @param key_to_print contains the unsigned char key 
+ */
+__host__ void print_key_in_hex(unsigned char* key_to_print){
+
+    for (uint32_t k = 0; k < AES_KEY_BYTES_LENGTH; k++){
+        printf("%X|", key_to_print[k]);
+    }
+    printf("\n\n");
+}
+
+/**
+ * function that save the results on files
+ * 
+ * @param elapsed_time_in_millisec is the time elapsed in ms
+ */
+__host__ void save_results(float elapsed_time_in_millisec){
+
+    char filename[62] = "parallel_result"; 
+    sprintf(filename, "./../results/parallel_result_%d.txt", NUMBER_BITS_TO_HACK);
+    ofstream file_out;
+
+    file_out.open(filename, std::ios_base::app);
+    file_out <<elapsed_time_in_millisec<< endl;
+    file_out.close();
+    printf("Status => Completed and results saved!\n");
+}
 
 /******************************************* PARALLEL DEVICE DECRYPTION ******************************************/
 
@@ -109,12 +138,10 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
         memcpy(state_matrix, device_ciphertext, AES_BLOCK_LENGTH);
         memcpy(hacked_key, device_key_to_hack, AES_KEY_BYTES_LENGTH); 
         memset(bytes_to_hack,0, (NUMBER_BITS_TO_HACK/NUMBER_BITS_IN_A_BYTE) + 1);
-
         uint8_t bits_to_maintain = device_key_to_hack[AES_KEY_BYTES_LENGTH - 1 - (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE)];
 
         // First copy the bytes that are multiple of 8 bits
         for ( uint32_t j = 0; j <  numcycles; j++ ){
-            
             // code that will be executed only if there are remaining bits that are not multiples of 8 bits 
             if( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 && j == ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ){
                 // The addition of unsigned number perform the append correctly until the value inside current_index_to_try[j] 
@@ -138,35 +165,16 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
         }
 
         __syncthreads();
-        
+        // lauch of the decrypt function for a block 
         single_block_decrypt(state_matrix, iv_aes, hacked_key);
-
         __syncthreads();
 
         for (uint32_t k = 0; k < AES_BLOCK_LENGTH; k++) {
-             
+            // if the state matrix after the decryption process is equal to the relative plaintext block
+            // we have found the key and we save the key, on the other hand we have only to return          
             if ((state_matrix[k] == device_plaintext[k])) {
                 if (k == (AES_BLOCK_LENGTH - 1)) {
-                    
-                    printf("Known key:\t");
-                    for (uint32_t k = 0; k < AES_KEY_BYTES_LENGTH; k++){
-                        printf("%d|", device_key_to_hack[k]);
-                    }
-                    printf("\n\n");
-                    printf("KEY HACKED!\n\n");
-                    printf("Hacked key:\t");
-                    for (uint32_t k = 0; k < AES_KEY_BYTES_LENGTH; k++){
-                        printf("%d|", hacked_key[k]);
-                    }
-                    printf("\n");
-                    printf("Expected key:\t");
-                    for (uint32_t k = 0; k < AES_KEY_BYTES_LENGTH; k++){
-                        printf("%d|", key_aes[k]);
-                    }
-                    printf("\n");
-
                     memcpy(device_return_key, hacked_key, AES_KEY_BYTES_LENGTH);
-
                     return;
                 }
             }
@@ -174,18 +182,13 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
                 return;
             }
         }
-
     }
-
 }
-
-
 
 
 int main() {
 
     /******************************************** SET GPU PROPERTIES **************************************************/
-
 
     // inizialize of a struct with all the gpu properties 
     cudaDeviceProp prop;                   
@@ -211,7 +214,6 @@ int main() {
 		return -1;
 	}
 	memset(ciphertext,0,CIPHERTEXT_LENGTH);
-
     string file_contents = hexToASCII(read_data_from_file(ciphertext_file));
 	// convert to unsigned char
 	for(int i=0; i<CIPHERTEXT_LENGTH; i++){
@@ -247,54 +249,57 @@ int main() {
     uint8_t* device_cbc_iv;
     uint8_t* device_key_to_hack;
     uint8_t* device_return_key;
+
+    cudaError_t cudaerr;
     
     printf("------------------------------------------------------- Memory allocation on device --------------------------------------------------\n");
-    
-    cudaError_t cudaerr;
 
     printf("Allocation of the space for the ciphertext on the device:\t");
-    // allocate device memory
     cudaerr = cudaMalloc((void**)&device_ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Allocation failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
         printf("OK\n");
     }
+
     printf("Allocation of the space for the plaintext on the device:\t");
     cudaerr = cudaMalloc((void**)&device_plaintext, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
-    }
-    else{
-        printf("OK\n");
-    }
-    printf("Allocation of the space for the IVs on the device:\t\t");
-    cudaerr = cudaMalloc((void**)&device_cbc_iv, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
-    if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
-    }
-    else{
-        printf("OK\n");
-    }
-    printf("Allocation of the space for the key to hack on the device:\t");
-    cudaerr = cudaMalloc((void**)&device_key_to_hack, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH);
-    if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
-    }
-    else{
-        printf("OK\n");
-    }
-    printf("Allocation of the space for the key hacked on the device:\t");
-    cudaerr = cudaMalloc((void**)&device_return_key, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH);
-    if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Allocation failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
         printf("OK\n");
     }
 
-    printf("OK => Completed!\n");
+    printf("Allocation of the space for the IVs on the device:\t\t");
+    cudaerr = cudaMalloc((void**)&device_cbc_iv, sizeof(uint8_t) * CIPHERTEXT_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("Allocation failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    else{
+        printf("OK\n");
+    }
+
+    printf("Allocation of the space for the key to hack on the device:\t");
+    cudaerr = cudaMalloc((void**)&device_key_to_hack, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("Allocation failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    else{
+        printf("OK\n");
+    }
+
+    printf("Allocation of the space for the key hacked on the device:\t");
+    cudaerr = cudaMalloc((void**)&device_return_key, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH);
+    if (cudaerr != cudaSuccess) {
+        printf("Allocation failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+    }
+    else{
+        printf("OK\n\n");
+    }
+
+    printf("Status => Completed!\n");
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
     printf("------------------------------------------------------ Copying data on device --------------------------------------------------------\n");
@@ -302,44 +307,46 @@ int main() {
     printf("Copy of the ciphertext on the device:\t");
     cudaerr = cudaMemcpy(device_ciphertext, ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Copy failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
         printf("OK\n");
     }
+
     printf("Copy of the plaintext on the device:\t");
     cudaerr = cudaMemcpy(device_plaintext, plaintext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Copy failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
         printf("OK\n");
     }
+
     printf("Copy of the IVs on the device:\t\t");
     cudaerr = cudaMemcpy(device_cbc_iv, ciphertext, sizeof(uint8_t) * CIPHERTEXT_LENGTH, cudaMemcpyHostToDevice);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Copy failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
         printf("OK\n");
     }
-    printf("Copy of the key_to_hack on the device:\t");
+
+    printf("Copy of the key to hack on the device:\t");
     cudaerr = cudaMemcpy(device_key_to_hack, key_to_hack, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH, cudaMemcpyHostToDevice);
     if (cudaerr != cudaSuccess) {
-        printf("kernel launch failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        printf("Copy failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
     }
     else{
-        printf("OK\n");
+        printf("OK\n\n");
     }
     
-    printf("OK => Completed!\n");
+    printf("Status => Completed!\n");
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
 
     /********************************************* LAUNCH OF THE KERNEL ***********************************************/
 
-    printf("-------------------------------------------------- Start of the brute force attack ---------------------------------------------------\n");
-
+    printf("-------------------------------------------------- Set-Up of the brute force attack --------------------------------------------------\n");
 
     // compute the maximum number of iteration in order to discover the key
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
@@ -350,29 +357,39 @@ int main() {
     if(num_block < 1){
         num_block = 1;
     }
+
+    printf("Number of blocks : %lu and Number of threads: %lu\n\n", num_block, thread_per_block);
+
+    printf("Known key:\t");
+    print_key_in_hex(key_to_hack);
+
+    printf("Expected key:\t");
+    print_key_in_hex(key_aes_host);
+
+    printf("Status => Completed!\n");
+    printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
     
-    // qui si sta trovando il numero dei blocchi ma non so bene che sta facendo 
-    //size_t device_setted_block_number = (message_num_block + thread_per_block - 1) / thread_per_block;
+    printf("-------------------------------------------------- Start of the brute force attack ---------------------------------------------------\n");
 
-    printf("Number of block : %lu and Number of threads: %lu\n", num_block, thread_per_block);
-
-    float ms=0;
-
-    //Event creation
+    float elapsed_time_in_millisecs=0;
+    
+    // Event creation
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
+    // start and stop of the record event
     cudaEventRecord(start);
     kernel_hack <<<num_block, thread_per_block >>> (device_ciphertext, device_plaintext, device_cbc_iv, iter_num, device_key_to_hack, device_return_key);
     cudaEventRecord(stop);
 
+    // sync of the events
     cudaEventSynchronize(stop);
 
-    cudaEventElapsedTime(&ms, start, stop);
+    // computation of the elapsed time of the brute force
+    cudaEventElapsedTime(&elapsed_time_in_millisecs, start, stop);
 
-    printf("Time elapsed: %f ms\n\n", ms);
-
+    // free of the event
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
 
@@ -380,24 +397,28 @@ int main() {
 
     cudaerr = cudaGetLastError();
     if (cudaerr != cudaSuccess){
-       printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
+        printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
     }
-
-    //Copy the hacked key from device to host
-    cudaerr = cudaMemcpy(key_to_hack, device_key_to_hack, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH, cudaMemcpyDeviceToHost);
-    if (cudaerr != cudaSuccess) {
-        printf("CudaMemcpy error \"%s\".\n", cudaGetErrorString(cudaerr));
-    }
-
-    char filename[62] = "parallel_result";
-    sprintf(filename, "./../results/parallel_result_%d.txt", NUMBER_BITS_TO_HACK);
-    ofstream file_out;
-
-    file_out.open(filename, std::ios_base::app);
-    file_out <<ms<< endl;
-    file_out.close();
-    printf("Save results on file\n");
+    else{
+        printf("KEY HACKED!\n");
     
+        printf("Copy of the key hacked on the host from the device:\t");
+        //Copy the hacked key from device to host
+        cudaerr = cudaMemcpy(key_to_hack, device_return_key, sizeof(uint8_t) * AES_KEY_BYTES_LENGTH, cudaMemcpyDeviceToHost);
+        if (cudaerr != cudaSuccess) {
+            printf("COpy failed with error \"%s\".\n", cudaGetErrorString(cudaerr));
+        }
+        else{
+            printf("OK\n\n");
+        }
+
+        printf("Elapsed Time of the brute force attack: %f ms\n\n", elapsed_time_in_millisecs);
+        
+        printf("Hacked key:\t");
+        print_key_in_hex(key_to_hack);
+
+        save_results(elapsed_time_in_millisecs);
+    }
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
     /**************************************** RELEASE OF THE DEVICE ALLOCATION ****************************************/
