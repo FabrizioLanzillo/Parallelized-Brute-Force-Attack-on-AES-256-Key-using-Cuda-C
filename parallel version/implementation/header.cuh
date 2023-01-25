@@ -13,6 +13,8 @@
 #define NUMBER_BITS_TO_HACK 30
 #define NUMBER_BITS_IN_A_BYTE 8
 
+#define NUMBER_OF_KEY_FOR_THREAD 108
+
 #define DEBUG true
 #define plaintext_file "./../../files/text_files/plaintext.txt"
 #define ciphertext_file "./../../files/text_files/ciphertext.txt"
