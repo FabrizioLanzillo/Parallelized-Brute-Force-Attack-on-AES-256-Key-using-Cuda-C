@@ -120,23 +120,25 @@ __device__ void single_block_decrypt(uint8_t *state_matrix, uint8_t *iv,const ui
  * 
  * @param device_ciphertext is the ciphertext allocated on the device and that is going to be decrypted
  */
-__global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t iter_num, uint8_t* device_key_to_hack, uint8_t* device_return_key){
+__global__ void 
+__launch_bounds__(MY_KERNEL_MAX_THREADS, MY_KERNEL_MIN_BLOCKS)
+kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t iter_num, uint8_t* device_key_to_hack, uint8_t* device_return_key){
     
-    uint32_t absolute_thread_index = threadIdx.x + (blockIdx.x * blockDim.x);
+    uint32_t __align__(16) absolute_thread_index = threadIdx.x + (blockIdx.x * blockDim.x);
 
     if (absolute_thread_index < iter_num) {
 
-        uint32_t index = absolute_thread_index * NUMBER_OF_KEY_FOR_THREAD;
+        uint32_t __align__(16) index = absolute_thread_index * NUMBER_OF_KEY_FOR_THREAD;
 
         while(index < index + NUMBER_OF_KEY_FOR_THREAD){
 
             // declaration of the data structure to implement the hack
-            unsigned char bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
-            uint8_t hacked_key[AES_KEY_BYTES_LENGTH];
-            uint8_t state_matrix[AES_BLOCK_LENGTH];
-            char ascii_character;
-            uint8_t* current_index_to_try = (uint8_t*)&index;
-            uint8_t numcycles = NUMBER_BITS_TO_HACK + 1;
+            unsigned char __align__(16) bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
+            uint8_t __align__(16) hacked_key[AES_KEY_BYTES_LENGTH];
+            uint8_t __align__(16) state_matrix[AES_BLOCK_LENGTH];
+            char __align__(8) ascii_character;
+            uint8_t* __align__(16) current_index_to_try = (uint8_t*)&index;
+            uint8_t __align__(16) numcycles = NUMBER_BITS_TO_HACK + 1;
 
             // allocation of the current element for the hacked key
             memcpy(state_matrix, device_ciphertext, AES_BLOCK_LENGTH);
@@ -145,7 +147,7 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
             uint8_t bits_to_maintain = device_key_to_hack[AES_KEY_BYTES_LENGTH - 1 - (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE)];
 
             // First copy the bytes that are multiple of 8 bits
-            for ( uint32_t j = 0; j <  numcycles; j++ ){
+            for ( uint32_t __align__(16) j = 0; j <  numcycles; j++ ){
                 // code that will be executed only if there are remaining bits that are not multiples of 8 bits 
                 if( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 && j == ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ){
                     // The addition of unsigned number perform the append correctly until the value inside current_index_to_try[j] 
@@ -171,7 +173,7 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
             // lauch of the decrypt function for a block 
             single_block_decrypt(state_matrix, iv_aes, hacked_key);
 
-            for (uint32_t k = 0; k < AES_BLOCK_LENGTH; k++) {
+            for (uint32_t __align__(16) k = 0; k < AES_BLOCK_LENGTH; k++) {
                 // if the state matrix after the decryption process is equal to the relative plaintext block
                 // we have found the key and we save the key, on the other hand we have only to return          
                 if ((state_matrix[k] == device_plaintext[k])) {
@@ -357,7 +359,7 @@ int main() {
     // compute the maximum number of iteration in order to discover the key
     uint64_t iter_num = (pow(2,NUMBER_BITS_TO_HACK))/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t thread_per_block = ((size_t)prop.maxThreadsPerBlock / 2) + 256;
+    size_t thread_per_block = ((size_t)prop.maxThreadsPerBlock / 2);
     // compute the number of block to initialize
     size_t num_block = iter_num / thread_per_block;
     if(num_block < 1){

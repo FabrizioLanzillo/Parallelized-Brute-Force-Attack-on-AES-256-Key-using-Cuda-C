@@ -15,6 +15,15 @@
 
 #define NUMBER_OF_KEY_FOR_THREAD 108
 
+#define THREADS_PER_BLOCK          256
+#if __CUDA_ARCH__ >= 200
+#define MY_KERNEL_MAX_THREADS  (2 * THREADS_PER_BLOCK)
+#define MY_KERNEL_MIN_BLOCKS   3
+#else
+#define MY_KERNEL_MAX_THREADS  THREADS_PER_BLOCK
+#define MY_KERNEL_MIN_BLOCKS   2
+#endif
+
 #define DEBUG true
 #define plaintext_file "./../../files/text_files/plaintext.txt"
 #define ciphertext_file "./../../files/text_files/ciphertext.txt"
@@ -134,11 +143,11 @@ __device__ unsigned char iv_aes[IV_BYTES_LENGTH] = {
  */
 __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key){
 
-    unsigned int j, k;
-    uint8_t temporary[4]; // Used for the column/row operations
+    unsigned int __align__(16) j, k;
+    uint8_t __align__(16) temporary[4]; // Used for the column/row operations
 
     // The first round key is the key itself.
-    for (unsigned int i = 0; i < AES_KEY_WORD_LENGTH; i++){
+    for (unsigned int __align__(16) i = 0; i < AES_KEY_WORD_LENGTH; i++){
 
         rounded_key[(i * 4) + 0] = key[(i * 4) + 0];
         rounded_key[(i * 4) + 1] = key[(i * 4) + 1];
@@ -147,7 +156,7 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
     }
 
     // All other round keys are found from the previous round keys.
-    for (unsigned int i = AES_KEY_WORD_LENGTH; i < COLUMN_NUMBER_STATE_MATRIX * (NUMBER_OF_ROUNDS + 1); i++){
+    for (unsigned int __align__(16) i = AES_KEY_WORD_LENGTH; i < COLUMN_NUMBER_STATE_MATRIX * (NUMBER_OF_ROUNDS + 1); i++){
         
         k = (i - 1) * 4;
         temporary[0] = rounded_key[k + 0];
@@ -227,8 +236,8 @@ __device__ void initialize_AES_round_secret(struct AES_round_secret* rs, const u
  */
 __device__  void add_round_key(uint8_t round, state_t* state, const uint8_t* expanded_key){
     
-    for (unsigned int i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
-        for (unsigned int j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
+    for (unsigned int __align__(16) i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
+        for (unsigned int __align__(16) j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
             (*state)[i][j] ^= expanded_key[(round * COLUMN_NUMBER_STATE_MATRIX * 4) + (i * COLUMN_NUMBER_STATE_MATRIX) + j];
         }
     }
@@ -242,7 +251,7 @@ __device__  void add_round_key(uint8_t round, state_t* state, const uint8_t* exp
  */
 __device__  void inv_shift_rows_decryption(state_t* state){
     
-    uint8_t temporary;
+    uint8_t __align__(16) temporary;
 
     // Rotate first row 1 columns to right  
     temporary = (*state)[3][1];
@@ -276,8 +285,8 @@ __device__  void inv_shift_rows_decryption(state_t* state){
  */
 __device__  void sub_bytes_decryption(state_t* state){
 
-    for (unsigned int i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
-        for (unsigned int j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
+    for (unsigned int __align__(16) i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
+        for (unsigned int __align__(16) j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
 
             (*state)[j][i] = getSBoxInvert((*state)[j][i]);
         }
@@ -292,7 +301,7 @@ __device__  void sub_bytes_decryption(state_t* state){
  */
 __device__  void inv_mix_columns_decryption(state_t* state){
     
-    uint8_t a, b, c, d;
+    uint8_t __align__(16) a, b, c, d;
 
     for (unsigned int i = 0; i < 4; i++){
         a = (*state)[i][0];
@@ -317,7 +326,7 @@ __device__  void inv_mix_columns_decryption(state_t* state){
  */
 __device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
 
-    for (unsigned int i = 0; i < AES_BLOCK_LENGTH; i++){
+    for (unsigned int __align__(16) i = 0; i < AES_BLOCK_LENGTH; i++){
 
         state_matrix[i] ^= iv[i];
     }
@@ -333,7 +342,7 @@ __device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
  */
 __device__  void decryption_rounds(state_t* state_matrix, const uint8_t* expanded_key){
 
-    uint8_t current_round = NUMBER_OF_ROUNDS;
+    uint8_t __align__(16) current_round = NUMBER_OF_ROUNDS;
 
     // Add the initial key to the state matrix before the first round of decryption
     add_round_key(NUMBER_OF_ROUNDS, state_matrix, expanded_key);
