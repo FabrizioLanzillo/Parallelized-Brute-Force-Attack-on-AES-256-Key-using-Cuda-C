@@ -398,9 +398,7 @@ int main() {
     // free of the event
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-
-    cudaDeviceSynchronize();
-
+    
     cudaerr = cudaGetLastError();
     if (cudaerr != cudaSuccess){
         printf("kernel launch failed with error \"%s\".\n",cudaGetErrorString(cudaerr));
