@@ -58,6 +58,8 @@ struct AES_round_secret{
     uint8_t round_iv[IV_BYTES_LENGTH];
 };
 
+__device__ bool hack_over = false;
+
 /***
  * The S-box is necessary for the expand_key_decryption function of the aes
  */

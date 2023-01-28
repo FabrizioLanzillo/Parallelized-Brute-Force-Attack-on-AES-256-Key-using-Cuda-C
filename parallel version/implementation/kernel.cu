@@ -128,60 +128,64 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
 
         for(unsigned int i = 0; i< NUMBER_OF_KEY_FOR_THREAD; i++){
             
-            index = i + absolute_thread_index*NUMBER_OF_KEY_FOR_THREAD;
+            if(!hack_over){
 
-            // declaration of the data structure to implement the hack
-            unsigned char bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
-            uint8_t hacked_key[AES_KEY_BYTES_LENGTH];
-            uint8_t state_matrix[AES_BLOCK_LENGTH];
-            char ascii_character;
-            uint8_t* current_index_to_try = (uint8_t*)&index;
-            uint8_t numcycles = NUMBER_BITS_TO_HACK + 1;
+                index = i + absolute_thread_index*NUMBER_OF_KEY_FOR_THREAD;
 
-            // allocation of the current element for the hacked key
-            memcpy(state_matrix, device_ciphertext, AES_BLOCK_LENGTH);
-            memcpy(hacked_key, device_key_to_hack, AES_KEY_BYTES_LENGTH); 
-            memset(bytes_to_hack,0, (NUMBER_BITS_TO_HACK/NUMBER_BITS_IN_A_BYTE) + 1);
-            uint8_t bits_to_maintain = device_key_to_hack[AES_KEY_BYTES_LENGTH - 1 - (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE)];
+                // declaration of the data structure to implement the hack
+                unsigned char bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
+                uint8_t hacked_key[AES_KEY_BYTES_LENGTH];
+                uint8_t state_matrix[AES_BLOCK_LENGTH];
+                char ascii_character;
+                uint8_t* current_index_to_try = (uint8_t*)&index;
+                uint8_t numcycles = NUMBER_BITS_TO_HACK + 1;
 
-            // First copy the bytes that are multiple of 8 bits
-            for ( uint32_t j = 0; j <  numcycles; j++ ){
-                // code that will be executed only if there are remaining bits that are not multiples of 8 bits 
-                if( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 && j == ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ){
-                    // The addition of unsigned number perform the append correctly until the value inside current_index_to_try[j] 
-                    // overcome the capacity of the bit to be copied, 
-                    // but this will never happen since we stop the cycle before it happen
-                    bytes_to_hack[j] = bits_to_maintain + current_index_to_try[j];
-                    continue;
+                // allocation of the current element for the hacked key
+                memcpy(state_matrix, device_ciphertext, AES_BLOCK_LENGTH);
+                memcpy(hacked_key, device_key_to_hack, AES_KEY_BYTES_LENGTH); 
+                memset(bytes_to_hack,0, (NUMBER_BITS_TO_HACK/NUMBER_BITS_IN_A_BYTE) + 1);
+                uint8_t bits_to_maintain = device_key_to_hack[AES_KEY_BYTES_LENGTH - 1 - (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE)];
+
+                // First copy the bytes that are multiple of 8 bits
+                for ( uint32_t j = 0; j <  numcycles; j++ ){
+                    // code that will be executed only if there are remaining bits that are not multiples of 8 bits 
+                    if( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 && j == ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ){
+                        // The addition of unsigned number perform the append correctly until the value inside current_index_to_try[j] 
+                        // overcome the capacity of the bit to be copied, 
+                        // but this will never happen since we stop the cycle before it happen
+                        bytes_to_hack[j] = bits_to_maintain + current_index_to_try[j];
+                        continue;
+                    }
+                    ascii_character = char(index >> (NUMBER_BITS_IN_A_BYTE * j));
+                    memcpy(&bytes_to_hack[j], &ascii_character, 1);
                 }
-                ascii_character = char(index >> (NUMBER_BITS_IN_A_BYTE * j));
-                memcpy(&bytes_to_hack[j], &ascii_character, 1);
-            }
 
-            // merge of the bits to hack inside the known key
-            for (uint32_t j = 0; j < (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1; j++) {
-                if ( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 ) {
-                    memcpy(&hacked_key[AES_KEY_BYTES_LENGTH - j - 1], &bytes_to_hack[j], 1);
-                }
-                else if ( j < ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ) {
-                    memcpy(&hacked_key[AES_KEY_BYTES_LENGTH - j - 1], &bytes_to_hack[j], 1);
-                }
-            }
-
-            // lauch of the decrypt function for a block 
-            single_block_decrypt(state_matrix, iv_aes, hacked_key);
-
-            for (uint32_t k = 0; k < AES_BLOCK_LENGTH; k++) {
-                // if the state matrix after the decryption process is equal to the relative plaintext block
-                // we have found the key and we save the key, on the other hand we have only to return          
-                if ((state_matrix[k] == device_plaintext[k])) {
-                    if (k == (AES_BLOCK_LENGTH - 1)) {
-                        memcpy(device_return_key, hacked_key, AES_KEY_BYTES_LENGTH);
-                        return;
+                // merge of the bits to hack inside the known key
+                for (uint32_t j = 0; j < (NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1; j++) {
+                    if ( NUMBER_BITS_TO_HACK % NUMBER_BITS_IN_A_BYTE != 0 ) {
+                        memcpy(&hacked_key[AES_KEY_BYTES_LENGTH - j - 1], &bytes_to_hack[j], 1);
+                    }
+                    else if ( j < ( NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE ) ) {
+                        memcpy(&hacked_key[AES_KEY_BYTES_LENGTH - j - 1], &bytes_to_hack[j], 1);
                     }
                 }
-                else {  
-                    break;
+
+                // lauch of the decrypt function for a block 
+                single_block_decrypt(state_matrix, iv_aes, hacked_key);
+
+                for (uint32_t k = 0; k < AES_BLOCK_LENGTH; k++) {
+                    // if the state matrix after the decryption process is equal to the relative plaintext block
+                    // we have found the key and we save the key, on the other hand we have only to return          
+                    if ((state_matrix[k] == device_plaintext[k])) {
+                        if (k == (AES_BLOCK_LENGTH - 1)) {
+                            memcpy(device_return_key, hacked_key, AES_KEY_BYTES_LENGTH);
+                            hack_over = true;
+                            return;
+                        }
+                    }
+                    else {  
+                        break;
+                    }
                 }
             }
         }
@@ -390,6 +394,7 @@ int main() {
     cudaEventRecord(stop);
 
     // sync of the events
+    cudaDeviceSynchronize();
     cudaEventSynchronize(stop);
 
     // computation of the elapsed time of the brute force
