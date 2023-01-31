@@ -1,6 +1,7 @@
+make
 for i in {1..10}
 do
-   ./run
+   ./run 512
 
 done
 echo "Execution finished and data saved successfully"

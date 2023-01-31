@@ -77,10 +77,10 @@ __host__ void print_key_in_hex(unsigned char* key_to_print){
  * 
  * @param elapsed_time_in_millisec is the time elapsed in ms
  */
-__host__ void save_results(float elapsed_time_in_millisec){
+__host__ void save_results(float elapsed_time_in_millisec, size_t thread_per_block){
 
-    char filename[62] = "parallel_result"; 
-    sprintf(filename, "./../results/parallel_result_%d_bits_%d_key_per_thread.txt", NUMBER_BITS_TO_HACK, NUMBER_OF_KEY_FOR_THREAD);
+    char filename[80] = "parallel_result"; 
+    sprintf(filename, "./../results/parallel_result_%d_bits_%d_key_per_thread_with_%d_threads.txt", NUMBER_BITS_TO_HACK, NUMBER_OF_KEY_FOR_THREAD, (int)thread_per_block);
     ofstream file_out;
 
     file_out.open(filename, std::ios_base::app);
@@ -193,7 +193,7 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
 }
 
 
-int main() {
+int main(int argc, char **argv) {
 
     /******************************************** SET GPU PROPERTIES **************************************************/
     // inizialize of a struct with all the gpu properties 
@@ -358,7 +358,9 @@ int main() {
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
     uint64_t iter_num_to_divide = iter_num/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t thread_per_block = ((size_t)prop.maxThreadsPerBlock / 2);
+    size_t selected_number_of_thread = atoi(argv[1]);
+    size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock, selected_number_of_thread);
+
     // compute the number of block to initialize
     size_t num_block = iter_num_to_divide / thread_per_block;
     if(num_block < 1){
@@ -426,7 +428,7 @@ int main() {
         printf("Hacked key:\t");
         print_key_in_hex(key_to_hack);
 
-        save_results(elapsed_time_in_millisecs);
+        save_results(elapsed_time_in_millisecs, thread_per_block);
     }
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
