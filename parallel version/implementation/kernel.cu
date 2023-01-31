@@ -193,7 +193,7 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
 }
 
 
-int main(int argc, char **argv) {
+int main() {
 
     /******************************************** SET GPU PROPERTIES **************************************************/
     // inizialize of a struct with all the gpu properties 
@@ -358,8 +358,7 @@ int main(int argc, char **argv) {
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
     uint64_t iter_num_to_divide = iter_num/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t selected_number_of_thread = atoi(argv[1]);
-    size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock, selected_number_of_thread);
+    size_t thread_per_block = (size_t)prop.maxThreadsPerBlock/2;
 
     // compute the number of block to initialize
     size_t num_block = iter_num_to_divide / thread_per_block;
