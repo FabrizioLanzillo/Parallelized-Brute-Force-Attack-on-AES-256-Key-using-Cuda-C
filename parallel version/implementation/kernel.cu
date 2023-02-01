@@ -358,7 +358,7 @@ int main() {
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
     uint64_t total_number_of_thread = iter_num/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t selected_number_of_thread_per_block = 64;
+    size_t selected_number_of_thread_per_block = 128;
     size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock/2, selected_number_of_thread_per_block);
     // compute the number of block to initialize
     size_t num_block = total_number_of_thread / thread_per_block;
