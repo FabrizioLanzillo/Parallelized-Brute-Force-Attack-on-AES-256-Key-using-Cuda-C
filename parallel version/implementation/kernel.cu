@@ -356,16 +356,16 @@ int main() {
 
     // compute the maximum number of iteration in order to discover the key
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
-    uint64_t iter_num_to_divide = iter_num/NUMBER_OF_KEY_FOR_THREAD;
+    uint64_t total_number_of_thread = iter_num/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t thread_per_block = (size_t)prop.maxThreadsPerBlock/2;
-
+    size_t selected_number_of_thread_per_block = 64;
+    size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock/2, selected_number_of_thread_per_block);
     // compute the number of block to initialize
-    size_t num_block = iter_num_to_divide / thread_per_block;
+    size_t num_block = total_number_of_thread / thread_per_block;
     if(num_block < 1){
         num_block = 1;
     }
-
+    
     printf("Total Number of key to try: %lu\n", iter_num);
     printf("Number of key for each thread: %d\n\n", NUMBER_OF_KEY_FOR_THREAD);
     printf("Number of threads: %lu\n", thread_per_block);

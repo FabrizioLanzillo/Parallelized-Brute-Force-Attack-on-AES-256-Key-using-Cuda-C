@@ -4,7 +4,7 @@ run:
 	nvcc kernel.cu -o run
 
 clean:
-	rm run ./../results/*.txt;
+	rm run
 
 rebuild: clean all
 

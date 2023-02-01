@@ -1,3 +1,5 @@
+/**************************************************** VARIABLES **********************************************************/
+// ********* AES decryption algorithm variables ***********
 #define AES_BLOCK_LENGTH 16 
 #define IV_BYTES_LENGTH 16
 #define AES_KEY_BYTES_LENGTH 32
@@ -6,15 +8,20 @@
 #define COLUMN_NUMBER_STATE_MATRIX 4
 #define ROW_NUMBER_STATE_MATRIX 4
 #define AES_KEY_WORD_LENGTH 8
-
-#define PLAINTEXT_LENGTH 28208
-#define CIPHERTEXT_LENGTH 28208
-
-#define NUMBER_BITS_TO_HACK 30
 #define NUMBER_BITS_IN_A_BYTE 8
+#define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
+// Needed to multiply numbers in Galois-Field (2^8) 
+#define mul(x,y)                                          \
+    ( ((y & 1) * x) ^                                     \
+    ((y >> 1 & 1) * xtimes(x)) ^                          \
+    ((y >> 2 & 1) * xtimes(xtimes(x))) ^                  \
+    ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
+    ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
 
-#define NUMBER_OF_KEY_FOR_THREAD 2
+#define getSBoxValue(num) (AES_Sbox[(num)])
+#define getSBoxInvert(num) (AES_inverse_Sbox[(num)])
 
+// ********* KERNEL variables and GPU settings ***********
 #define THREADS_PER_BLOCK          256
 #if __CUDA_ARCH__ >= 200
 #define MY_KERNEL_MAX_THREADS  (2 * THREADS_PER_BLOCK)
@@ -24,23 +31,16 @@
 #define MY_KERNEL_MIN_BLOCKS   2
 #endif
 
-#define DEBUG true
+// *************** User Control Variables ****************
 #define plaintext_file "./../../files/text_files/plaintext.txt"
+#define PLAINTEXT_LENGTH 28208
 #define ciphertext_file "./../../files/text_files/ciphertext.txt"
+#define CIPHERTEXT_LENGTH 28208
 
-#define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
+#define NUMBER_BITS_TO_HACK 30
+#define NUMBER_OF_KEY_FOR_THREAD 128
 
-//Needed to multiply numbers in Galois-Field (2^8) 
-#define mul(x,y)                                          \
-    ( ((y & 1) * x) ^                                     \
-    ((y >> 1 & 1) * xtimes(x)) ^                          \
-    ((y >> 2 & 1) * xtimes(xtimes(x))) ^                  \
-    ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
-    ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
-
-
-#define getSBoxValue(num) (AES_Sbox[(num)])
-#define getSBoxInvert(num) (AES_inverse_Sbox[(num)])
+#define DEBUG true
 
 typedef uint8_t state_t[ROW_NUMBER_STATE_MATRIX][COLUMN_NUMBER_STATE_MATRIX];
 
