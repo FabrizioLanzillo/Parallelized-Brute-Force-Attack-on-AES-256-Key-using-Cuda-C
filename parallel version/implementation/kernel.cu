@@ -77,10 +77,10 @@ __host__ void print_key_in_hex(unsigned char* key_to_print){
  * 
  * @param elapsed_time_in_millisec is the time elapsed in ms
  */
-__host__ void save_results(float elapsed_time_in_millisec, size_t thread_per_block){
+__host__ void save_results(float elapsed_time_in_millisec, size_t num_of_blocks, size_t thread_per_block){
 
-    char filename[80] = "parallel_result"; 
-    sprintf(filename, "./../results/parallel_result_%d_bits_%d_key_per_thread_with_%d_threads.txt", NUMBER_BITS_TO_HACK, NUMBER_OF_KEY_FOR_THREAD, (int)thread_per_block);
+    char filename[20] = "parallel_result"; 
+    //sprintf(filename, "./../results/parallel_result_%d_bits_with_%d_blocks_and_%d_threads.txt", NUMBER_BITS_TO_HACK, (int)num_of_blocks, (int)thread_per_block);
     ofstream file_out;
 
     file_out.open(filename, std::ios_base::app);
@@ -119,18 +119,18 @@ __device__ void single_block_decrypt(uint8_t *state_matrix, uint8_t *iv,const ui
  * 
  * @param device_ciphertext is the ciphertext allocated on the device and that is going to be decrypted
  */
-__global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t iter_num, uint8_t* device_key_to_hack, uint8_t* device_return_key){
+__global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintext, uint8_t* device_cbc_iv, size_t iter_num, uint8_t* device_key_to_hack, uint8_t* device_return_key, uint64_t number_of_key_for_thread){
     
     uint32_t absolute_thread_index = threadIdx.x + (blockIdx.x * blockDim.x);
     uint32_t index = 0;
 
     if (absolute_thread_index < iter_num) {
 
-        for(unsigned int i = 0; i< NUMBER_OF_KEY_FOR_THREAD; i++){
+        for(unsigned int i = 0; i< number_of_key_for_thread; i++){
             
             if(!hack_over){
 
-                index = i + absolute_thread_index*NUMBER_OF_KEY_FOR_THREAD;
+                index = i + absolute_thread_index*number_of_key_for_thread;
 
                 // declaration of the data structure to implement the hack
                 unsigned char bytes_to_hack[(NUMBER_BITS_TO_HACK / NUMBER_BITS_IN_A_BYTE) + 1];
@@ -193,7 +193,7 @@ __global__ void kernel_hack(uint8_t* device_ciphertext, uint8_t* device_plaintex
 }
 
 
-int main() {
+int main(int argc, char **argv) {
 
     /******************************************** SET GPU PROPERTIES **************************************************/
     // inizialize of a struct with all the gpu properties 
@@ -353,23 +353,26 @@ int main() {
     /********************************************* LAUNCH OF THE KERNEL ***********************************************/
 
     printf("-------------------------------------------------- Set-Up of the brute force attack --------------------------------------------------\n");
-
     // compute the maximum number of iteration in order to discover the key
     uint64_t iter_num = pow(2,NUMBER_BITS_TO_HACK);
-    uint64_t total_number_of_thread = iter_num/NUMBER_OF_KEY_FOR_THREAD;
     // maxThreadsPerBlock is the maximum number of threads per block for the current gpu
-    size_t selected_number_of_thread_per_block = 128;
-    size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock/2, selected_number_of_thread_per_block);
+    size_t selected_number_of_thread_per_block = atoi(argv[2]);
+    size_t thread_per_block = min((size_t)prop.maxThreadsPerBlock, selected_number_of_thread_per_block);
     // compute the number of block to initialize
-    size_t num_block = total_number_of_thread / thread_per_block;
+    size_t num_block = atoi(argv[1]);
     if(num_block < 1){
         num_block = 1;
     }
+    uint64_t total_number_of_thread = num_block*thread_per_block;
+
+    uint64_t number_of_key_for_thread = iter_num/total_number_of_thread;
     
-    printf("Total Number of key to try: %lu\n", iter_num);
-    printf("Number of key for each thread: %d\n\n", NUMBER_OF_KEY_FOR_THREAD);
     printf("Number of threads: %lu\n", thread_per_block);
     printf("Number of blocks: %lu\n\n", num_block);
+    printf("Total Number of thread: %lu\n\n", total_number_of_thread);
+    printf("Total Number of key to try: %lu\n", iter_num);
+    printf("Number of key for each thread: %lu\n\n", number_of_key_for_thread);
+    
 
     printf("Known key:\t");
     print_key_in_hex(key_to_hack);
@@ -391,7 +394,7 @@ int main() {
 
     // start and stop of the record event
     cudaEventRecord(start);
-    kernel_hack <<<num_block, thread_per_block >>> (device_ciphertext, device_plaintext, device_cbc_iv, iter_num, device_key_to_hack, device_return_key);
+    kernel_hack <<<num_block, thread_per_block >>> (device_ciphertext, device_plaintext, device_cbc_iv, iter_num, device_key_to_hack, device_return_key, number_of_key_for_thread);
     cudaEventRecord(stop);
 
     // sync of the events
@@ -427,7 +430,7 @@ int main() {
         printf("Hacked key:\t");
         print_key_in_hex(key_to_hack);
 
-        save_results(elapsed_time_in_millisecs, thread_per_block);
+        save_results(elapsed_time_in_millisecs, num_block, thread_per_block);
     }
     printf("--------------------------------------------------------------------------------------------------------------------------------------\n");
 
