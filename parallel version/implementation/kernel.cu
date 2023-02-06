@@ -79,8 +79,8 @@ __host__ void print_key_in_hex(unsigned char* key_to_print){
  */
 __host__ void save_results(float elapsed_time_in_millisec, size_t num_of_blocks, size_t thread_per_block){
 
-    char filename[20] = "parallel_result"; 
-    //sprintf(filename, "./../results/parallel_result_%d_bits_with_%d_blocks_and_%d_threads.txt", NUMBER_BITS_TO_HACK, (int)num_of_blocks, (int)thread_per_block);
+    char filename[80] = "parallel_result"; 
+    sprintf(filename, "./../results/parallel_result_%d_bits_with_%d_blocks_and_%d_threads.txt", NUMBER_BITS_TO_HACK, (int)num_of_blocks, (int)thread_per_block);
     ofstream file_out;
 
     file_out.open(filename, std::ios_base::app);
