@@ -1,0 +1,10 @@
+# of Bits: 26, Elapsed Time in ms: 43138
+# of Bits: 26, Elapsed Time in ms: 43205
+# of Bits: 26, Elapsed Time in ms: 43298
+# of Bits: 26, Elapsed Time in ms: 43584
+# of Bits: 26, Elapsed Time in ms: 43557
+# of Bits: 26, Elapsed Time in ms: 43110
+# of Bits: 26, Elapsed Time in ms: 43307
+# of Bits: 26, Elapsed Time in ms: 43391
+# of Bits: 26, Elapsed Time in ms: 45707
+# of Bits: 26, Elapsed Time in ms: 43694

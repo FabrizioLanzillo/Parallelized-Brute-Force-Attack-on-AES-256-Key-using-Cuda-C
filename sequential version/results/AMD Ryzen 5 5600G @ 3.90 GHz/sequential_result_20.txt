@@ -1,0 +1,10 @@
+# of Bits: 20, Elapsed Time in ms: 563
+# of Bits: 20, Elapsed Time in ms: 577
+# of Bits: 20, Elapsed Time in ms: 578
+# of Bits: 20, Elapsed Time in ms: 560
+# of Bits: 20, Elapsed Time in ms: 584
+# of Bits: 20, Elapsed Time in ms: 552
+# of Bits: 20, Elapsed Time in ms: 568
+# of Bits: 20, Elapsed Time in ms: 570
+# of Bits: 20, Elapsed Time in ms: 561
+# of Bits: 20, Elapsed Time in ms: 572
