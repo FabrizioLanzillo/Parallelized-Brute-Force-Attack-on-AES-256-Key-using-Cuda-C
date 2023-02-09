@@ -498,9 +498,6 @@ void* decryption_brute_force(void* data){
     struct bf_data *my_data;
     my_data = (struct bf_data *) data;
 
-    printf("starting_point: %ld\n",my_data->starting_point);
-    printf("step: %ld\n",my_data->step);
-
 	unsigned char ascii_character;
 	//Calculate the number of cycles before the cycle to optimize
 	uintmax_t index = pow (BASE_NUMBER, my_data->num_bits_to_hack);
