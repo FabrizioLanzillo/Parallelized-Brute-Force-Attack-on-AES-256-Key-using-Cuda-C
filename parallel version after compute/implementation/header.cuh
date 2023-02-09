@@ -1,3 +1,5 @@
+/**************************************************** VARIABLES **********************************************************/
+// ********* AES decryption algorithm variables ***********
 #define AES_BLOCK_LENGTH 16 
 #define IV_BYTES_LENGTH 16
 #define AES_KEY_BYTES_LENGTH 32
@@ -6,20 +8,9 @@
 #define COLUMN_NUMBER_STATE_MATRIX 4
 #define ROW_NUMBER_STATE_MATRIX 4
 #define AES_KEY_WORD_LENGTH 8
-
-#define PLAINTEXT_LENGTH 28208
-#define CIPHERTEXT_LENGTH 28208
-
-#define NUMBER_BITS_TO_HACK 30
 #define NUMBER_BITS_IN_A_BYTE 8
-
-#define DEBUG true
-#define plaintext_file "./../../files/text_files/plaintext.txt"
-#define ciphertext_file "./../../files/text_files/ciphertext.txt"
-
 #define xtimes(x) ((x<<1) ^ (((x>>7) & 1) * 0x1b))
-
-//Needed to multiply numbers in Galois-Field (2^8) 
+// Needed to multiply numbers in Galois-Field (2^8) 
 #define mul(x,y)                                          \
     ( ((y & 1) * x) ^                                     \
     ((y >> 1 & 1) * xtimes(x)) ^                          \
@@ -27,30 +18,51 @@
     ((y >> 3 & 1) * xtimes(xtimes(xtimes(x)))) ^          \
     ((y >> 4 & 1) * xtimes(xtimes(xtimes(xtimes(x))))))   \
 
-
 #define getSBoxValue(num) (AES_Sbox[(num)])
 #define getSBoxInvert(num) (AES_inverse_Sbox[(num)])
+
+// ********* KERNEL variables and GPU settings ***********
+#define THREADS_PER_BLOCK          256
+#if __CUDA_ARCH__ >= 200
+#define MY_KERNEL_MAX_THREADS  (2 * THREADS_PER_BLOCK)
+#define MY_KERNEL_MIN_BLOCKS   3
+#else
+#define MY_KERNEL_MAX_THREADS  THREADS_PER_BLOCK
+#define MY_KERNEL_MIN_BLOCKS   2
+#endif
+
+// *************** User Control Variables ****************
+#define plaintext_file "./../../files/text_files/plaintext.txt"
+#define PLAINTEXT_LENGTH 28208
+#define ciphertext_file "./../../files/text_files/ciphertext.txt"
+#define CIPHERTEXT_LENGTH 28208
+
+#define NUMBER_BITS_TO_HACK 30
+
+#define DEBUG true
 
 typedef uint8_t state_t[ROW_NUMBER_STATE_MATRIX][COLUMN_NUMBER_STATE_MATRIX];
 
 /*********************************************** DATA STRUCTURES **************************************************/
 
 /***
- * struct that cointains the key and the iv for each round, since we use aes cbc, 
- * starting from the decryption of the second ciphertext block 
- * the value of iv is replaced with the ciphertext of the previous block 
- * when we decrypt the current block 
+ * struct that cointains the key and the iv for each round, since we use aes cbc,
+ * starting from the decryption of the second ciphertext block
+ * the value of iv is replaced with the ciphertext of the previous block
+ * when we decrypt the current block
  */
-struct AES_round_secret{
+struct AES_round_secret {
 
     uint8_t expanded_key[AES_KEY_EXPANDED_BYTES_LENGTH];
     uint8_t round_iv[IV_BYTES_LENGTH];
 };
 
+__device__ bool hack_over = false;
+
 /***
  * The S-box is necessary for the expand_key_decryption function of the aes
  */
-__device__  const uint8_t AES_Sbox[256] = {
+__device__  const uint8_t __align__(16) AES_Sbox[256] = {
 
     //0     1    2      3     4    5     6     7      8    9     A      B    C     D     E     F
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -68,13 +80,13 @@ __device__  const uint8_t AES_Sbox[256] = {
     0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16 
+    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 };
 
 /***
  * The inverted S-box is s S-box performed in reverse necessary for the decryption of the aes
  */
-__device__  const uint8_t AES_inverse_Sbox[256] = {
+__device__  const uint8_t __align__(16) AES_inverse_Sbox[256] = {
 
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -95,15 +107,15 @@ __device__  const uint8_t AES_inverse_Sbox[256] = {
 };
 
 /***
- * const_matrix contains the power of x in the GF(2^8) 
+ * const_matrix contains the power of x in the GF(2^8)
 */
-__device__  const uint8_t const_matrix[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+__device__  const uint8_t __align__(16) const_matrix[11] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
 /***
  * simmetric key for aes decryption
  * 85 92 6B E3 DA 73 6F 47 54 93 C4 92 76 ED 17 D4 18 A5 5A 2C FD 07 7D 12 15 ED 25 1C 4A 57 D8 EC
  */
-__device__ unsigned char key_aes[AES_KEY_BYTES_LENGTH] = {
+__device__ unsigned char __align__(16) key_aes[AES_KEY_BYTES_LENGTH] = {
     0x85, 0x92, 0x6b, 0xe3, 0xda, 0x73, 0x6f, 0x47, 0x54, 0x93, 0xc4, 0x92, 0x76, 0xed, 0x17, 0xd4,
     0x18, 0xa5, 0x5a, 0x2c, 0xfd, 0x07, 0x7d, 0x12, 0x15, 0xed, 0x25, 0x1c, 0x4a, 0x57, 0xd8, 0xec
 };
@@ -117,26 +129,26 @@ unsigned char key_aes_host[AES_KEY_BYTES_LENGTH] = {
  * IV for aes decryption
  * D8 59 6B 73 9E FA C0 46 0E 86 1F 9B 77 90 F9 96
  */
-__device__ unsigned char iv_aes[IV_BYTES_LENGTH] = {
+__device__ unsigned char __align__(16) iv_aes[IV_BYTES_LENGTH] = {
     0xd8, 0x59, 0x6b, 0x73, 0x9e, 0xfa, 0xc0, 0x46, 0x0e, 0x86, 0x1f, 0x9b, 0x77, 0x90, 0xf9, 0x96
 };
 
 /***************************************** INITIALIZATION DEVICE FUNCTION *****************************************/
 
 /**
- * function that expand the key from the simmetric aes key of 256 bit 
+ * function that expand the key from the simmetric aes key of 256 bit
  * the key now is 240 byte long
- * 
+ *
  * @param rounded_key is the key for the initial round, after the expansion
  * @param key is the simmetric aes key
  */
-__device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key){
+__device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* __restrict__ key) {
 
-    unsigned int j, k;
-    uint8_t temporary[4]; // Used for the column/row operations
+    unsigned int __align__(16) j, k;
+    uint8_t __align__(16) __shared__ temporary[4]; // Used for the column/row operations
 
     // The first round key is the key itself.
-    for (unsigned int i = 0; i < AES_KEY_WORD_LENGTH; i++){
+    for (unsigned int __align__(16) i = 0; i < AES_KEY_WORD_LENGTH; i++) {
 
         rounded_key[(i * 4) + 0] = key[(i * 4) + 0];
         rounded_key[(i * 4) + 1] = key[(i * 4) + 1];
@@ -145,8 +157,8 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
     }
 
     // All other round keys are found from the previous round keys.
-    for (unsigned int i = AES_KEY_WORD_LENGTH; i < COLUMN_NUMBER_STATE_MATRIX * (NUMBER_OF_ROUNDS + 1); i++){
-        
+    for (unsigned int __align__(16) i = AES_KEY_WORD_LENGTH; i < COLUMN_NUMBER_STATE_MATRIX * (NUMBER_OF_ROUNDS + 1); i++) {
+
         k = (i - 1) * 4;
         temporary[0] = rounded_key[k + 0];
         temporary[1] = rounded_key[k + 1];
@@ -154,7 +166,7 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
         temporary[3] = rounded_key[k + 3];
 
 
-        if (i % AES_KEY_WORD_LENGTH == 0){
+        if (i % AES_KEY_WORD_LENGTH == 0) {
 
             // This function shifts the 4 bytes in a word to the left once.
             // [a0,a1,a2,a3] becomes [a1,a2,a3,a0]
@@ -171,7 +183,7 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
             // applies the S-box to each of the four bytes to produce an output word.
 
             // Function Subword()
-        
+
             temporary[0] = getSBoxValue(temporary[0]);
             temporary[1] = getSBoxValue(temporary[1]);
             temporary[2] = getSBoxValue(temporary[2]);
@@ -181,7 +193,7 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
             temporary[0] = temporary[0] ^ const_matrix[i / AES_KEY_WORD_LENGTH];
         }
 
-        if (i % AES_KEY_WORD_LENGTH == 4){
+        if (i % AES_KEY_WORD_LENGTH == 4) {
 
             // Function Subword()
             temporary[0] = getSBoxValue(temporary[0]);
@@ -190,7 +202,7 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
             temporary[3] = getSBoxValue(temporary[3]);
 
         }
-        
+
         j = i * 4; k = (i - AES_KEY_WORD_LENGTH) * 4;
         rounded_key[j + 0] = rounded_key[k + 0] ^ temporary[0];
         rounded_key[j + 1] = rounded_key[k + 1] ^ temporary[1];
@@ -201,13 +213,12 @@ __device__  void expand_key_decryption(uint8_t* rounded_key, const uint8_t* key)
 
 /**
  * this function initialize the struct AES_round_secret that contains the key and the iv for each round
- * 
+ *
  * @param rs is the pointer to the struct
  * @param key is the simmetric aes key
  * @param iv is the iv for the aes-cbc
  */
-__device__ void initialize_AES_round_secret(struct AES_round_secret* rs, const uint8_t* key, const uint8_t* iv){
-    
+__device__ void initialize_AES_round_secret(struct AES_round_secret* rs, const uint8_t* __restrict__ key, const uint8_t* __restrict__ iv) {
     expand_key_decryption(rs->expanded_key, key);
     memcpy(rs->round_iv, iv, IV_BYTES_LENGTH);
 }
@@ -218,15 +229,15 @@ __device__ void initialize_AES_round_secret(struct AES_round_secret* rs, const u
  * every byte of the state matrix is put in xor with the byte of the local key, taken from the expanded key
  * every local key is generated from the expanded key, in particular every local key is 16 byte long
  * and the add_round_key function is called 15 times.
- * 
+ *
  * @param round is the number of the current round
  * @param state is the state matrix which element are trasnformed through all the phases
  * @param expanded_key is the the expanded key
  */
-__device__  void add_round_key(uint8_t round, state_t* state, const uint8_t* expanded_key){
-    
-    for (unsigned int i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
-        for (unsigned int j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
+__device__  void add_round_key(uint8_t round, state_t* state, const uint8_t* __restrict__ expanded_key) {
+
+    for (unsigned int __align__(16) i = 0; i < ROW_NUMBER_STATE_MATRIX; i++) {
+        for (unsigned int __align__(16) j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++) {
             (*state)[i][j] ^= expanded_key[(round * COLUMN_NUMBER_STATE_MATRIX * 4) + (i * COLUMN_NUMBER_STATE_MATRIX) + j];
         }
     }
@@ -234,13 +245,13 @@ __device__  void add_round_key(uint8_t round, state_t* state, const uint8_t* exp
 
 /**
  * shifts the rows in the state matrix to the left according to the number of the relative row
- * this function with inv_mix_columns_decryption ensure the confusion and diffusion criterion 
- * 
+ * this function with inv_mix_columns_decryption ensure the confusion and diffusion criterion
+ *
  * @param state is the state matrix
  */
-__device__  void inv_shift_rows_decryption(state_t* state){
-    
-    uint8_t temporary;
+__device__  void inv_shift_rows_decryption(state_t* state) {
+
+    uint8_t __align__(16) temporary;
 
     // Rotate first row 1 columns to right  
     temporary = (*state)[3][1];
@@ -267,15 +278,15 @@ __device__  void inv_shift_rows_decryption(state_t* state){
 }
 
 /**
- * Non-linear operation that replace where evry byte of the state matrix is replaced 
- * using the Inverse S-Box 
- * 
- * @param state is the state matrix 
+ * Non-linear operation that replace where evry byte of the state matrix is replaced
+ * using the Inverse S-Box
+ *
+ * @param state is the state matrix
  */
-__device__  void sub_bytes_decryption(state_t* state){
+__device__  void sub_bytes_decryption(state_t* state) {
 
-    for (unsigned int i = 0; i < ROW_NUMBER_STATE_MATRIX; i++){
-        for (unsigned int j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++){
+    for (unsigned int __align__(16) i = 0; i < ROW_NUMBER_STATE_MATRIX; i++) {
+        for (unsigned int __align__(16) j = 0; j < COLUMN_NUMBER_STATE_MATRIX; j++) {
 
             (*state)[j][i] = getSBoxInvert((*state)[j][i]);
         }
@@ -284,15 +295,15 @@ __device__  void sub_bytes_decryption(state_t* state){
 
 /**
  * in this function the four bytes of a column are combined using an invertible linear transformation
- * this function with inv_shift_rows_decryption ensure the confusion and diffusion criterion 
- * 
+ * this function with inv_shift_rows_decryption ensure the confusion and diffusion criterion
+ *
  * @param state is the state matrix
  */
-__device__  void inv_mix_columns_decryption(state_t* state){
-    
-    uint8_t a, b, c, d;
+__device__  void inv_mix_columns_decryption(state_t* state) {
 
-    for (unsigned int i = 0; i < 4; i++){
+    uint8_t __align__(16) a, b, c, d;
+
+    for (unsigned int __align__(16) i = 0; i < 4; i++) {
         a = (*state)[i][0];
         b = (*state)[i][1];
         c = (*state)[i][2];
@@ -307,15 +318,15 @@ __device__  void inv_mix_columns_decryption(state_t* state){
 
 /************************************************ CBC DECRYPTION **************************************************/
 /**
- * this function put in xor the byte of the iv with the block decrypted after all the aes decryption phases 
+ * this function put in xor the byte of the iv with the block decrypted after all the aes decryption phases
  * the iv for the first block is the aes iv, and then after the first block is the previous ciphertext block
- * 
+ *
  * @param state_matrix is the state matrix is the result of the aes encryption algorithm after all the phases
  * @param iv is long 16 bytes and is put in xor with the state matrix
  */
-__device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
+__device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* __restrict__ iv) {
 
-    for (unsigned int i = 0; i < AES_BLOCK_LENGTH; i++){
+    for (unsigned int __align__(16) i = 0; i < AES_BLOCK_LENGTH; i++) {
 
         state_matrix[i] ^= iv[i];
     }
@@ -325,13 +336,13 @@ __device__  void xor_with_iv(uint8_t* state_matrix, const uint8_t* iv){
 
 /**
  * function that decrypts the single aes block through the NUMBER_OF_ROUNDS aes number of rounds
- * 
+ *
  * @param state_matrix is the state matrix is the result of the aes encryption algorithm after all the phases
  * @param expanded_key is the the expanded key
  */
-__device__  void decryption_rounds(state_t* state_matrix, const uint8_t* expanded_key){
+__device__  void decryption_rounds(state_t* state_matrix, const uint8_t* __restrict__ expanded_key) {
 
-    uint8_t current_round = NUMBER_OF_ROUNDS;
+    uint8_t __align__(16) current_round = NUMBER_OF_ROUNDS;
 
     // Add the initial key to the state matrix before the first round of decryption
     add_round_key(NUMBER_OF_ROUNDS, state_matrix, expanded_key);
@@ -343,7 +354,7 @@ __device__  void decryption_rounds(state_t* state_matrix, const uint8_t* expande
     // the last round of decryption does not require inverse column mixing
 
     /******************** NUMBER_OF_ROUNDS - 1 ***************************/
-    for (; current_round > 0; current_round--){
+    for (; current_round > 0; current_round--) {
 
         inv_shift_rows_decryption(state_matrix);
         sub_bytes_decryption(state_matrix);
