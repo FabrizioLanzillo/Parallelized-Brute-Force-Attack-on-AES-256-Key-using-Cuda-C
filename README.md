@@ -8,7 +8,7 @@ In particular, what we want to analyze is:
 - The optimizations between the different parallelized versions. 
 
 The first parallelized version was implemented by exploiting the CPU multithreading, in C++. 
-While the subsequent parallel versions were developed in order to be executed on the GPU, through implementation in CUDA. 
+While the subsequent parallel versions were developed in order to be executed on the GPU, through implementation in CUDA-C. 
 
 # How to run
 ## CPU Versions 
