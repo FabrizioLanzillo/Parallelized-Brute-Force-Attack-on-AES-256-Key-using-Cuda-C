@@ -1,4 +1,4 @@
-# Parallelized AES-256 Brute Force Attack with CUDA
+# Parallelized Brute Force Attack on AES-256 Key using Cuda-C
 
 University project for **Computer Architecture** course (MSc Computer Engineering at University of Pisa, A.Y. 2022-23)
 
