@@ -24,15 +24,18 @@ While the subsequent parallel versions were developed in order to be executed on
 Parallelized-AES-Brute-Force-Attack-with-Cuda
 |
 ├── CPU versions
-│   ├── multithread_version
 │   ├── sequential_version
-│   └── results
+│   │   ├── implementation
+│   │   └── results
+│   └── multithread_version
+│       ├── implementation
+│       └── results
 |
 └── GPU versions
 │   ├── optimization after NVIDIA Nsight Compute analysis
 │   │   ├── implementation
 │   │   └── results
-│   ├── optimization before NVIDIA Nsight Compute analysis
+│   └── optimization before NVIDIA Nsight Compute analysis
 │       ├── implementation
 │       └── results
 │
